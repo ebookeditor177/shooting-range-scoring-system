@@ -394,7 +394,58 @@ class DeviceConsumer(BaseConsumer):
             # Send to game group
             await self.channel_layer.group_send(f"game_{result['game_id']}", hit_message)
         
+        # Check if any lane reached win score - end game early if so
+        if result['game_id']:
+            await self._check_win_score(result['game_id'], lane.lane_number, result['total_score'])
+        
         return result
+    
+    async def _check_win_score(self, game_id: str, lane_number: int, score: int):
+        """Check if a lane has reached the win score and end game early."""
+        from asgiref.sync import sync_to_async
+        
+        @sync_to_async
+        def check_and_end():
+            from shooting_range.games.models import Game, GameStatus
+            from shooting_range.lanes.models import LaneScore
+            from django.conf import settings
+            
+            try:
+                game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
+                
+                # Check if win score is enabled
+                win_score = getattr(settings, 'DEFAULT_WIN_SCORE', 1000)
+                use_win_score = True  # Default to True
+                
+                if use_win_score and score >= win_score:
+                    game.status = GameStatus.ENDED
+                    game.ended_at = timezone.now()
+                    game.winner_lane = lane_number
+                    game.save()
+                    return lane_number
+                return None
+            except Game.DoesNotExist:
+                return None
+        
+        winner = await check_and_end()
+        
+        if winner:
+            # Get final scores
+            final_scores = await self.get_game_scores_by_id(game_id)
+            
+            # Broadcast game end immediately
+            await self.channel_layer.group_send(f'game_{game_id}', {
+                'type': 'GAME_END',
+                'winner_lane': winner,
+                'final_scores': final_scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            await self.channel_layer.group_send('all_games', {
+                'type': 'GAME_END',
+                'winner_lane': winner,
+                'final_scores': final_scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
     
     async def get_game_scores(self, game):
         from asgiref.sync import sync_to_async
@@ -970,27 +1021,37 @@ class AdminConsumer(BaseConsumer):
         def check_and_end_game():
             try:
                 game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
+                
+                # Find winner (lane with highest score)
+                from shooting_range.lanes.models import LaneScore
+                lane_scores = LaneScore.objects.filter(game=game).select_related('lane').order_by('-score')
+                winner = lane_scores.first()
+                winner_lane = winner.lane.lane_number if winner and winner.score > 0 else None
+                
                 game.status = GameStatus.ENDED
                 game.ended_at = timezone.now()
+                game.winner_lane = winner_lane
                 game.save()
-                return True
+                return winner_lane
             except Game.DoesNotExist:
-                return False
+                return None
         
-        if await check_and_end_game():
+        winner_lane = await check_and_end_game()
+        
+        if winner_lane is not None or True:  # Always broadcast even if no winner
             # Get final scores
             final_scores = await self.get_game_scores_by_id(game_id)
             
             # Broadcast game end
             await self.channel_layer.group_send(f'game_{game_id}', {
                 'type': 'GAME_END',
-                'winner_lane': None,
+                'winner_lane': winner_lane,
                 'final_scores': final_scores,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             await self.channel_layer.group_send('all_games', {
                 'type': 'GAME_END',
-                'winner_lane': None,
+                'winner_lane': winner_lane,
                 'final_scores': final_scores,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })

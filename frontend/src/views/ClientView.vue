@@ -204,10 +204,14 @@ watch(() => store.isGameActive, (active) => {
     store.updateRemainingTime(store.gameState.duration)
   }
 })
+
+const isWinner = computed(() => {
+  return store.gameState.winner_lane === laneNumber.value
+})
 </script>
 
 <template>
-  <div class="client-screen">
+  <div class="client-screen" :style="{ '--primary-color': store.config.primaryColor }">
     <header class="top-bar">
       <div class="lane-info">
         <span class="lane-number">LANE {{ laneNumber }}</span>
@@ -227,9 +231,34 @@ watch(() => store.isGameActive, (active) => {
         <div class="countdown-label">GET READY</div>
       </div>
 
-      <div v-if="store.isGameActive" class="timer-display">
-        <span class="timer-value">{{ store.gameState.remaining_time }}</span>
-        <span class="timer-label">SEC</span>
+      <div v-if="store.isGameActive" class="game-info">
+        <div class="timer-display">
+          <span class="timer-value">{{ store.gameState.remaining_time }}</span>
+          <span class="timer-label">SEC</span>
+        </div>
+        
+        <div class="hit-stats">
+          <div class="stat-item head">
+            <span class="stat-icon">🎯</span>
+            <span class="stat-count">{{ store.hitsByPosition(laneNumber).head }}</span>
+            <span class="stat-label">HEAD</span>
+          </div>
+          <div class="stat-item chest">
+            <span class="stat-icon">💪</span>
+            <span class="stat-count">{{ store.hitsByPosition(laneNumber).chest }}</span>
+            <span class="stat-label">CHEST</span>
+          </div>
+          <div class="stat-item stomach">
+            <span class="stat-icon">🎯</span>
+            <span class="stat-count">{{ store.hitsByPosition(laneNumber).stomach }}</span>
+            <span class="stat-label">STOMACH</span>
+          </div>
+          <div class="stat-item leg">
+            <span class="stat-icon">🦵</span>
+            <span class="stat-count">{{ store.hitsByPosition(laneNumber).left_leg + store.hitsByPosition(laneNumber).right_leg }}</span>
+            <span class="stat-label">LEGS</span>
+          </div>
+        </div>
       </div>
 
       <div class="target-wrapper">
@@ -254,8 +283,9 @@ watch(() => store.isGameActive, (active) => {
 
     <div v-if="store.isGameEnded" class="game-end-overlay">
       <div class="game-end-content">
+        <div class="end-glow" :style="{ boxShadow: `0 0 100px ${store.config.primaryColor}` }"></div>
         <div class="end-title" :style="{ color: store.config.primaryColor }">
-          {{ store.gameState.winner_lane === laneNumber ? 'YOU WIN!' : 'GAME OVER' }}
+          {{ isWinner ? '🏆 YOU WIN! 🏆' : store.gameState.winner_lane ? 'GAME OVER' : 'TIME\'S UP!' }}
         </div>
         <div class="final-score">
           <span class="final-label">Final Score</span>
@@ -263,11 +293,37 @@ watch(() => store.isGameActive, (active) => {
             {{ store.currentScore(laneNumber) }}
           </span>
         </div>
+        <div class="hit-breakdown">
+          <div class="breakdown-title">HIT BREAKDOWN</div>
+          <div class="breakdown-grid">
+            <div class="breakdown-item">
+              <span class="breakdown-icon">🎯</span>
+              <span class="breakdown-count">{{ store.hitsByPosition(laneNumber).head }}</span>
+              <span class="breakdown-label">HEAD</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-icon">💪</span>
+              <span class="breakdown-count">{{ store.hitsByPosition(laneNumber).chest }}</span>
+              <span class="breakdown-label">CHEST</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-icon">🎯</span>
+              <span class="breakdown-count">{{ store.hitsByPosition(laneNumber).stomach }}</span>
+              <span class="breakdown-label">STOMACH</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-icon">🦵</span>
+              <span class="breakdown-count">{{ store.hitsByPosition(laneNumber).left_leg + store.hitsByPosition(laneNumber).right_leg }}</span>
+              <span class="breakdown-label">LEGS</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div v-if="!store.isGameActive && !store.isGameCountdown && !store.isGameEnded" class="waiting-overlay">
       <div class="waiting-content">
+        <div class="waiting-pulse"></div>
         <div class="waiting-title" :style="{ color: store.config.primaryColor }">
           WAITING FOR GAME
         </div>
@@ -400,6 +456,7 @@ watch(() => store.isGameActive, (active) => {
   font-size: 200px;
   font-weight: bold;
   animation: pulse 1s ease-in-out infinite;
+  text-shadow: 0 0 50px var(--primary-color);
 }
 
 .countdown-label {
@@ -411,6 +468,73 @@ watch(() => store.isGameActive, (active) => {
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
+}
+
+.game-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 20px;
+  position: absolute;
+  top: 80px;
+  left: 0;
+  right: 0;
+  z-index: 5;
+}
+
+.timer-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 25px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 15px;
+  border: 2px solid var(--primary-color);
+}
+
+.timer-value {
+  font-size: 48px;
+  font-weight: bold;
+  color: var(--primary-color);
+  text-shadow: 0 0 20px var(--primary-color);
+}
+
+.timer-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 2px;
+}
+
+.hit-stats {
+  display: flex;
+  gap: 10px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 15px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 10px;
+  min-width: 60px;
+}
+
+.stat-icon {
+  font-size: 20px;
+}
+
+.stat-count {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--primary-color);
+  text-shadow: 0 0 10px var(--primary-color);
+}
+
+.stat-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 1px;
 }
 
 .waiting-overlay,
@@ -458,6 +582,120 @@ watch(() => store.isGameActive, (active) => {
 .final-value {
   font-size: 72px;
   font-weight: bold;
+}
+
+.waiting-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.waiting-pulse {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 3px solid var(--primary-color);
+  animation: waitingPulse 2s ease-in-out infinite;
+  margin-bottom: 30px;
+}
+
+@keyframes waitingPulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+    box-shadow: 0 0 20px var(--primary-color);
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 40px var(--primary-color);
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+    box-shadow: 0 0 20px var(--primary-color);
+  }
+}
+
+.game-end-content {
+  text-align: center;
+  position: relative;
+}
+
+.end-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: glowPulse 1s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; }
+  50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.5; }
+}
+
+.end-title {
+  font-size: 48px;
+  font-weight: bold;
+  letter-spacing: 5px;
+  text-align: center;
+  text-shadow: 0 0 30px var(--primary-color);
+  animation: winnerBounce 0.5s ease-out;
+}
+
+@keyframes winnerBounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.hit-breakdown {
+  margin-top: 40px;
+}
+
+.breakdown-title {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 3px;
+  margin-bottom: 20px;
+}
+
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+}
+
+.breakdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.breakdown-icon {
+  font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.breakdown-count {
+  font-size: 28px;
+  font-weight: bold;
+  color: var(--primary-color);
+  text-shadow: 0 0 10px var(--primary-color);
+}
+
+.breakdown-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 1px;
 }
 
 .error-toast {

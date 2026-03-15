@@ -26,6 +26,13 @@ export interface Score {
   lane: number
   score: number
   hit_count: number
+  hits_by_position?: {
+    head: number
+    chest: number
+    stomach: number
+    left_leg: number
+    right_leg: number
+  }
 }
 
 export const useGameStore = defineStore('game', () => {
@@ -73,6 +80,16 @@ export const useGameStore = defineStore('game', () => {
     return scores.value.get(laneNumber)?.hit_count ?? 0
   })
 
+  const hitsByPosition = computed(() => (laneNumber: number) => {
+    return scores.value.get(laneNumber)?.hits_by_position || {
+      head: 0,
+      chest: 0,
+      stomach: 0,
+      left_leg: 0,
+      right_leg: 0
+    }
+  })
+
   // Actions
   function setLaneStatus(status: LaneStatus) {
     lanes.value.set(status.lane_number, status)
@@ -102,11 +119,32 @@ export const useGameStore = defineStore('game', () => {
       recentHits.value.pop()
     }
 
+    // Get existing score or create new
+    const existing = scores.value.get(hit.lane) || {
+      lane: hit.lane,
+      score: 0,
+      hit_count: 0,
+      hits_by_position: {
+        head: 0,
+        chest: 0,
+        stomach: 0,
+        left_leg: 0,
+        right_leg: 0
+      }
+    }
+
+    // Update hit count by position
+    const position = hit.position as keyof typeof existing.hits_by_position
+    if (existing.hits_by_position && position in existing.hits_by_position) {
+      existing.hits_by_position[position]++
+    }
+
     // Update score - create new object to trigger reactivity
     const newScore = {
       lane: hit.lane,
       score: hit.total_score,
-      hit_count: hit.hit_count
+      hit_count: hit.hit_count,
+      hits_by_position: existing.hits_by_position
     }
     scores.value.set(hit.lane, newScore)
     
