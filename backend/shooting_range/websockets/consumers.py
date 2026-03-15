@@ -88,6 +88,60 @@ class BaseConsumer(AsyncWebsocketConsumer):
     async def send_to_group(self, group_name: str, message: dict):
         """Send a message to a specific group."""
         await self.channel_layer.group_send(group_name, message)
+    
+    # Group message handlers - called when messages are sent via group_send
+    async def game_countdown(self, event: dict):
+        """Handle game countdown message from group."""
+        await self.send_message({
+            'type': 'GAME_COUNTDOWN',
+            'count': event.get('count'),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def game_start(self, event: dict):
+        """Handle game start message from group."""
+        await self.send_message({
+            'type': 'GAME_START',
+            'game_id': event.get('game_id'),
+            'duration': event.get('duration'),
+            'countdown': event.get('countdown'),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def hit_event(self, event: dict):
+        """Handle hit event message from group."""
+        await self.send_message({
+            'type': 'HIT_EVENT',
+            'lane': event.get('lane'),
+            'position': event.get('position'),
+            'accuracy': event.get('accuracy'),
+            'score': event.get('score'),
+            'total_score': event.get('total_score'),
+            'hit_count': event.get('hit_count'),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def game_end(self, event: dict):
+        """Handle game end message from group."""
+        await self.send_message({
+            'type': 'GAME_END',
+            'game_id': event.get('game_id'),
+            'winner_lane': event.get('winner_lane'),
+            'final_scores': event.get('final_scores', []),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def config_update(self, event: dict):
+        """Handle config update message from group."""
+        await self.send_message({
+            'type': 'CONFIG_UPDATE',
+            'primary_color': event.get('primary_color'),
+            'secondary_color': event.get('secondary_color'),
+            'logo_url': event.get('logo_url'),
+            'enable_sound': event.get('enable_sound'),
+            'enable_visual_effects': event.get('enable_visual_effects'),
+            'timestamp': event.get('timestamp')
+        })
 
 
 class DeviceConsumer(BaseConsumer):
