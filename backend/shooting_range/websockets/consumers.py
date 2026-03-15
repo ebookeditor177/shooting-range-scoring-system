@@ -396,21 +396,10 @@ class DeviceConsumer(BaseConsumer):
                 defaults={'score': 0, 'hit_count': 0}
             )
             
-            # Get current hits_by_position
-            hits_by_position = lane_score.hits_by_position or {}
-            if not isinstance(hits_by_position, dict):
-                hits_by_position = {}
-            
-            # Update position count
-            if position not in hits_by_position:
-                hits_by_position[position] = 0
-            hits_by_position[position] = hits_by_position.get(position, 0) + 1
-            
             # Update score
             lane_score.score += score
             lane_score.hit_count += 1
             lane_score.last_hit_at = timezone.now()
-            lane_score.hits_by_position = hits_by_position
             lane_score.save()
             
             # Create hit event
@@ -427,6 +416,15 @@ class DeviceConsumer(BaseConsumer):
                 raw_strength=raw_strength,
                 score=score,
                 event_timestamp=event_time
+            )
+            
+            # Get hit counts by position from HitEvent table
+            from django.db.models import Count
+            hits_by_position = dict(
+                HitEvent.objects.filter(game=game, lane=lane)
+                .values('position')
+                .annotate(count=Count('id'))
+                .values_list('position', 'count')
             )
             
             result = {
@@ -875,7 +873,7 @@ class AdminConsumer(BaseConsumer):
         await self.send_status()
     
     # Group message handlers for admin dashboard updates
-    async def game_countdown(self, event: dict):
+    async def GAME_COUNTDOWN(self, event: dict):
         """Forward countdown to admin."""
         await self.send_message({
             'type': 'GAME_COUNTDOWN',
@@ -884,16 +882,17 @@ class AdminConsumer(BaseConsumer):
             'timestamp': event.get('timestamp')
         })
     
-    async def game_start(self, event: dict):
+    async def GAME_START(self, event: dict):
         """Forward game start to admin."""
         await self.send_message({
             'type': 'GAME_START',
             'game_id': event.get('game_id'),
             'duration': event.get('duration'),
+            'config': event.get('config'),
             'timestamp': event.get('timestamp')
         })
     
-    async def hit_event(self, event: dict):
+    async def HIT_EVENT(self, event: dict):
         """Forward hit event to admin."""
         await self.send_message({
             'type': 'HIT_EVENT',
@@ -902,10 +901,11 @@ class AdminConsumer(BaseConsumer):
             'accuracy': event.get('accuracy'),
             'score': event.get('score'),
             'total_score': event.get('total_score', 0),
+            'hits_by_position': event.get('hits_by_position', {}),
             'timestamp': event.get('timestamp')
         })
     
-    async def game_end(self, event: dict):
+    async def GAME_END(self, event: dict):
         """Forward game end to admin."""
         await self.send_message({
             'type': 'GAME_END',
