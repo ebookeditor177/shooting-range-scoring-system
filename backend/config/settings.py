@@ -51,17 +51,20 @@ INSTALLED_APPS = [
 # Channels configuration
 ASGI_APPLICATION = 'config.asgi.application'
 
+# Default to InMemoryChannelLayer for development (single process)
+# For production with multiple workers, use Redis
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels.layers.InMemoryChannelLayer',
     }
 }
 
-# Redis configuration for production
+# Redis configuration for production (when USE_REDIS=true)
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
-# Use Redis channel layer in production
-if os.environ.get('USE_REDIS', 'false').lower() in ('true', '1', 'yes'):
+# Use Redis channel layer when USE_REDIS env var is set
+# This is required for production deployments with multiple workers
+if os.environ.get('USE_REDIS', '').lower() in ('true', '1', 'yes'):
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',

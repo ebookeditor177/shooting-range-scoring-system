@@ -443,9 +443,21 @@ class ClientConsumer(BaseConsumer):
         await self.join_group(group_name)
         self.subscribed_lanes.append(lane_number)
         
+        # Also subscribe to all games broadcast
+        await self.join_group('all_games')
+        
         await self.send_message({
             'type': 'SUBSCRIBED',
             'lane': lane_number,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+    
+    async def handle_subscribe_all_games(self, data: dict):
+        """Subscribe to all game broadcasts."""
+        await self.join_group('all_games')
+        await self.send_message({
+            'type': 'SUBSCRIBED',
+            'channel': 'all_games',
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
     
@@ -727,9 +739,17 @@ class AdminConsumer(BaseConsumer):
         from asgiref.sync import sync_to_async
         
         for i in range(countdown_seconds, 0, -1):
+            # Send to game-specific group
             await self.channel_layer.group_send(f'game_{game_id}', {
                 'type': 'GAME_COUNTDOWN',
                 'count': i,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            # Also send to all_games group for clients not in specific game group
+            await self.channel_layer.group_send('all_games', {
+                'type': 'GAME_COUNTDOWN',
+                'count': i,
+                'game_id': game_id,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             await asyncio.sleep(1)
@@ -747,7 +767,15 @@ class AdminConsumer(BaseConsumer):
         
         await activate_game()
         
+        # Send to game-specific group
         await self.channel_layer.group_send(f'game_{game_id}', {
+            'type': 'GAME_START',
+            'game_id': game_id,
+            'duration': 60,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+        # Also send to all_games group
+        await self.channel_layer.group_send('all_games', {
             'type': 'GAME_START',
             'game_id': game_id,
             'duration': 60,

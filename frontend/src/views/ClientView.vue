@@ -61,6 +61,20 @@ function handleMessage(msg: WebSocketMessage) {
       }
       break
 
+    case 'GAME_STARTED':
+      // Also handle GAME_STARTED for starting the countdown
+      if (msg.countdown) {
+        store.setCountdown(msg.countdown)
+        if (store.config.enableSound) {
+          playCountdownBeep()
+        }
+      }
+      store.startGame(msg.game_id, msg.duration || 60)
+      if (store.config.enableSound) {
+        playStartSound()
+      }
+      break
+
     case 'GAME_START':
       store.startGame(msg.game_id, msg.duration)
       if (store.config.enableSound) {
