@@ -547,6 +547,41 @@ class ClientConsumer(BaseConsumer):
                 **status,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
+        
+        # Also get active game scores if any
+        scores = await self.get_active_game_scores()
+        if scores:
+            await self.send_message({
+                'type': 'GAME_SCORES',
+                'scores': scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+    
+    @database_sync_to_async
+    def get_active_game_scores(self) -> list:
+        """Get scores from the currently active game."""
+        from shooting_range.games.models import Game, GameStatus
+        from shooting_range.lanes.models import LaneScore
+        
+        try:
+            active_game = Game.objects.filter(status=GameStatus.ACTIVE).first()
+            if not active_game:
+                return []
+            
+            lane_scores = LaneScore.objects.filter(
+                game=active_game
+            ).select_related('lane')
+            
+            scores = []
+            for ls in lane_scores:
+                scores.append({
+                    'lane': ls.lane.lane_number,
+                    'score': ls.score,
+                    'hit_count': ls.hit_count
+                })
+            return scores
+        except Exception:
+            return []
     
     @database_sync_to_async
     def get_lane_status(self, lane_number: int) -> dict:
@@ -1027,12 +1062,30 @@ class AdminConsumer(BaseConsumer):
             status__in=[GameStatus.COUNTDOWN, GameStatus.ACTIVE]
         ).first()
         
-        return {
-            'lanes': lanes,
-            'devices': devices,
-            'active_game': {
+        # Get scores for active game
+        active_game_data = None
+        if active_game:
+            active_game_data = {
                 'game_id': str(active_game.game_id),
                 'status': active_game.status,
                 'mode': active_game.mode
-            } if active_game else None
+            }
+            # Add lane scores
+            from shooting_range.lanes.models import LaneScore
+            lane_scores = LaneScore.objects.filter(
+                game=active_game
+            ).select_related('lane')
+            scores = []
+            for ls in lane_scores:
+                scores.append({
+                    'lane': ls.lane.lane_number,
+                    'score': ls.score,
+                    'hit_count': ls.hit_count
+                })
+            active_game_data['scores'] = scores
+        
+        return {
+            'lanes': lanes,
+            'devices': devices,
+            'active_game': active_game_data
         }

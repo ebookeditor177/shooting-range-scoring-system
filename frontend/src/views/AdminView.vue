@@ -41,6 +41,18 @@ function handleMessage(msg: WebSocketMessage) {
           status: msg.active_game.status,
           mode: msg.active_game.mode
         })
+        // Update scores if present
+        if (msg.active_game.scores && Array.isArray(msg.active_game.scores)) {
+          msg.active_game.scores.forEach((scoreData: { lane: number, score: number, hit_count: number }) => {
+            store.scores.set(scoreData.lane, {
+              lane: scoreData.lane,
+              score: scoreData.score,
+              hit_count: scoreData.hit_count
+            })
+          })
+          // Force reactivity
+          store.scores = new Map(store.scores)
+        }
       }
       break
 
@@ -69,6 +81,21 @@ function handleMessage(msg: WebSocketMessage) {
     case 'GAME_RESET':
       store.resetGame()
       activeGameId.value = null
+      break
+
+    case 'GAME_SCORES':
+      // Update scores from active game
+      if (msg.scores && Array.isArray(msg.scores)) {
+        msg.scores.forEach((scoreData: { lane: number, score: number, hit_count: number }) => {
+          store.scores.set(scoreData.lane, {
+            lane: scoreData.lane,
+            score: scoreData.score,
+            hit_count: scoreData.hit_count
+          })
+        })
+        // Force reactivity
+        store.scores = new Map(store.scores)
+      }
       break
 
     case 'HIT_EVENT':
