@@ -553,6 +553,30 @@ class ClientConsumer(BaseConsumer):
         self.subscribed_lanes: list = []
         self.client_id = f"client_{id(self)}"
         
+        # Get lane from query params
+        query_string = self.scope.get('query_string', b'').decode()
+        from urllib.parse import parse_qs
+        query_params = parse_qs(query_string)
+        lane_param = query_params.get('lane', [None])[0]
+        
+        if lane_param:
+            try:
+                lane_number = int(lane_param)
+                group_name = f"lane_{lane_number}"
+                await self.join_group(group_name)
+                self.subscribed_lanes.append(lane_number)
+                
+                # Also join all_games for broadcasts
+                await self.join_group('all_games')
+                
+                await self.send_message({
+                    'type': 'SUBSCRIBED',
+                    'lane': lane_number,
+                    'timestamp': datetime.utcnow().isoformat() + 'Z'
+                })
+            except ValueError:
+                pass
+        
         # Auto-authenticate for simplicity
         await self.send_message({
             'type': 'AUTHENTICATED',
@@ -824,6 +848,56 @@ class AdminConsumer(BaseConsumer):
         
         # Send current system status
         await self.send_status()
+    
+    # Group message handlers for admin dashboard updates
+    async def game_countdown(self, event: dict):
+        """Forward countdown to admin."""
+        await self.send_message({
+            'type': 'GAME_COUNTDOWN',
+            'count': event.get('count'),
+            'game_id': event.get('game_id'),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def game_start(self, event: dict):
+        """Forward game start to admin."""
+        await self.send_message({
+            'type': 'GAME_START',
+            'game_id': event.get('game_id'),
+            'duration': event.get('duration'),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def hit_event(self, event: dict):
+        """Forward hit event to admin."""
+        await self.send_message({
+            'type': 'HIT_EVENT',
+            'lane': event.get('lane'),
+            'position': event.get('position'),
+            'accuracy': event.get('accuracy'),
+            'score': event.get('score'),
+            'total_score': event.get('total_score', 0),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def game_end(self, event: dict):
+        """Forward game end to admin."""
+        await self.send_message({
+            'type': 'GAME_END',
+            'game_id': event.get('game_id'),
+            'winner_lane': event.get('winner_lane'),
+            'final_scores': event.get('final_scores', []),
+            'timestamp': event.get('timestamp')
+        })
+    
+    async def config_update(self, event: dict):
+        """Forward config update to admin."""
+        await self.send_message({
+            'type': 'CONFIG_UPDATE',
+            'primary_color': event.get('primary_color'),
+            'secondary_color': event.get('secondary_color'),
+            'timestamp': event.get('timestamp')
+        })
     
     async def handle_admin_command(self, data: dict):
         """Handle admin commands."""
