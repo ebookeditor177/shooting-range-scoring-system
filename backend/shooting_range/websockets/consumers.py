@@ -250,7 +250,7 @@ class DeviceConsumer(BaseConsumer):
     @database_sync_to_async
     def get_lane_by_number(self, lane_number: int):
         from shooting_range.lanes.models import Lane
-        lane, created = Lane.objects.get_or_create(
+        lane, created = Lane.objects.select_related('device').get_or_create(
             lane_number=lane_number,
             defaults={'name': f'Lane {lane_number}', 'is_enabled': True}
         )
@@ -524,12 +524,12 @@ class ClientConsumer(BaseConsumer):
         from shooting_range.devices.models import Device
         
         try:
-            lane = Lane.objects.get(lane_number=lane_number)
+            lane = Lane.objects.select_related('device').get(lane_number=lane_number)
             device = lane.device
             
             return {
                 'lane_number': lane.lane_number,
-                'name': lane.name,
+                'name': lane.name or f'Lane {lane.lane_number}',
                 'is_active': lane.is_active,
                 'is_enabled': lane.is_enabled,
                 'enabled_sensors': lane.enabled_sensors,
@@ -864,7 +864,8 @@ class AdminConsumer(BaseConsumer):
                 'is_enabled': lane.is_enabled,
                 'is_active': lane.is_active,
                 'is_connected': lane.is_connected,
-                'device_id': lane.device.device_id if lane.device else None
+                'device_id': lane.device.device_id if lane.device else None,
+                'device_connected': lane.device.is_online if lane.device else False
             })
         
         devices = []
