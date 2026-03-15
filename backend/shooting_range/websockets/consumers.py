@@ -461,7 +461,7 @@ class DeviceConsumer(BaseConsumer):
         @sync_to_async
         def check_and_end():
             from shooting_range.games.models import Game, GameStatus
-            from shooting_range.lanes.models import LaneScore
+            from shooting_range.lanes.models import Lane, LaneScore
             from django.conf import settings
             
             try:
@@ -472,9 +472,12 @@ class DeviceConsumer(BaseConsumer):
                 use_win_score = True  # Default to True
                 
                 if use_win_score and score >= win_score:
+                    # Get the lane object
+                    lane = Lane.objects.filter(lane_number=lane_number).first()
                     game.status = GameStatus.ENDED
                     game.ended_at = timezone.now()
-                    game.winner_lane = lane_number
+                    if lane:
+                        game.winner_lane = lane
                     game.save()
                     return lane_number
                 return None
@@ -1077,16 +1080,22 @@ class AdminConsumer(BaseConsumer):
                 game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
                 
                 # Find winner (lane with highest score)
-                from shooting_range.lanes.models import LaneScore
+                from shooting_range.lanes.models import LaneScore, Lane
                 lane_scores = LaneScore.objects.filter(game=game).select_related('lane').order_by('-score')
                 winner = lane_scores.first()
-                winner_lane = winner.lane.lane_number if winner and winner.score > 0 else None
+                winner_lane_number = winner.lane.lane_number if winner and winner.score > 0 else None
                 
                 game.status = GameStatus.ENDED
                 game.ended_at = timezone.now()
-                game.winner_lane = winner_lane
+                
+                # Set winner lane object
+                if winner_lane_number:
+                    lane = Lane.objects.filter(lane_number=winner_lane_number).first()
+                    if lane:
+                        game.winner_lane = lane
+                
                 game.save()
-                return winner_lane
+                return winner_lane_number
             except Game.DoesNotExist:
                 return None
         

@@ -118,6 +118,15 @@ class Game(models.Model):
     # Active lanes for this game
     active_lanes = models.ManyToManyField('lanes.Lane', related_name='games', blank=True)
     
+    # Winner
+    winner_lane = models.ForeignKey(
+        'lanes.Lane',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='won_games'
+    )
+    
     # Timestamps
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
@@ -149,12 +158,11 @@ class Game(models.Model):
         return max(0, int(remaining))
     
     @property
-    def winner_lane(self):
-        """Find the lane with the highest score."""
-        if not hasattr(self, '_winner_lane_cache'):
-            scores = self.lane_scores.select_related('lane').order_by('-score')
-            self._winner_lane_cache = scores.first()
-        return self._winner_lane_cache
+    def winner_lane_number(self):
+        """Get the lane number of the winner."""
+        if self.winner_lane:
+            return self.winner_lane.lane_number
+        return None
     
     def start(self):
         """Start the game."""
