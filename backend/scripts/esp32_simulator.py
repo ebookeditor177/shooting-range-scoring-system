@@ -9,7 +9,7 @@ import json
 import random
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 # Try to import websockets, install if not available
 try:
@@ -88,7 +88,7 @@ class ESP32Simulator:
         self.lane_number = lane_number
         self.server_url = server_url
         self.device_id = generate_device_id(lane_number)
-        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.websocket: Any = None
         self.is_connected = False
         self.hit_count = 0
         
@@ -141,9 +141,11 @@ async def simulate_lane(
     lane_number: int, 
     hit_interval: float = 2.0,
     heartbeat_interval: float = 5.0,
-    stop_event: asyncio.Event
+    stop_event: asyncio.Event = None
 ):
     """Simulate a single lane's ESP32 device."""
+    if stop_event is None:
+        stop_event = asyncio.Event()
     simulator = ESP32Simulator(lane_number)
     
     # Connect
