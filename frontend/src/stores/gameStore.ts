@@ -102,18 +102,16 @@ export const useGameStore = defineStore('game', () => {
       recentHits.value.pop()
     }
 
-    // Update score
-    const existing = scores.value.get(hit.lane)
-    if (existing) {
-      existing.score = hit.total_score
-      existing.hit_count = hit.hit_count
-    } else {
-      scores.value.set(hit.lane, {
-        lane: hit.lane,
-        score: hit.total_score,
-        hit_count: hit.hit_count
-      })
+    // Update score - create new object to trigger reactivity
+    const newScore = {
+      lane: hit.lane,
+      score: hit.total_score,
+      hit_count: hit.hit_count
     }
+    scores.value.set(hit.lane, newScore)
+    
+    // Force reactivity update
+    scores.value = new Map(scores.value)
   }
 
   function setCountdown(value: number) {

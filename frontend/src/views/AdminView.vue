@@ -152,6 +152,26 @@ function toggleLane(laneNumber: number) {
   }
 }
 
+// Branding configuration
+const brandingConfig = ref({
+  primaryColor: '#00ff00',
+  secondaryColor: '#000000',
+  logoUrl: '',
+  enableSound: true,
+  enableVisualEffects: true
+})
+
+function applyBranding() {
+  sendMessage({
+    type: 'update_config',
+    primary_color: brandingConfig.value.primaryColor,
+    secondary_color: brandingConfig.value.secondaryColor,
+    logo_url: brandingConfig.value.logoUrl,
+    enable_sound: brandingConfig.value.enableSound,
+    enable_visual_effects: brandingConfig.value.enableVisualEffects
+  })
+}
+
 function getLaneStatusClass(laneNumber: number) {
   const lane = store.lanes.get(laneNumber)
   if (!lane) return 'unknown'
@@ -263,6 +283,46 @@ function getLaneStatusClass(laneNumber: number) {
             :disabled="!activeGameId"
           >
             Reset
+          </button>
+        </div>
+      </section>
+
+      <!-- Branding Configuration -->
+      <section class="panel branding-panel">
+        <h2>Branding & Colors</h2>
+        
+        <div class="control-row">
+          <div class="control-group">
+            <label>Primary Color</label>
+            <input type="color" v-model="brandingConfig.primaryColor" />
+            <span>{{ brandingConfig.primaryColor }}</span>
+          </div>
+          <div class="control-group">
+            <label>Secondary Color</label>
+            <input type="color" v-model="brandingConfig.secondaryColor" />
+            <span>{{ brandingConfig.secondaryColor }}</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Logo URL</label>
+          <input type="text" v-model="brandingConfig.logoUrl" placeholder="https://example.com/logo.png" />
+        </div>
+
+        <div class="control-row">
+          <div class="control-group checkbox">
+            <input type="checkbox" id="enableSound" v-model="brandingConfig.enableSound" />
+            <label for="enableSound">Enable Sound Effects</label>
+          </div>
+          <div class="control-group checkbox">
+            <input type="checkbox" id="enableVisualEffects" v-model="brandingConfig.enableVisualEffects" />
+            <label for="enableVisualEffects">Enable Visual Effects</label>
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button class="btn" @click="applyBranding">
+            Apply Branding
           </button>
         </div>
       </section>
@@ -518,5 +578,22 @@ function getLaneStatusClass(laneNumber: number) {
 .scoreboard td:last-child {
   text-align: right;
   color: #00ff00;
+}
+
+.branding-panel input[type="color"] {
+  width: 50px;
+  height: 40px;
+  border: none;
+  cursor: pointer;
+}
+
+.branding-panel input[type="text"] {
+  width: 100%;
+}
+
+.branding-panel span {
+  margin-left: 10px;
+  font-size: 12px;
+  color: #888;
 }
 </style>

@@ -97,6 +97,16 @@ function handleMessage(msg: WebSocketMessage) {
       store.setScore(msg)
       break
 
+    case 'CONFIG_UPDATE':
+      store.setConfig({
+        primaryColor: msg.primary_color,
+        secondaryColor: msg.secondary_color,
+        logoUrl: msg.logo_url,
+        enableSound: msg.enable_sound,
+        enableVisualEffects: msg.enable_visual_effects
+      })
+      break
+
     case 'ERROR':
       console.error('Server error:', msg.error)
       break

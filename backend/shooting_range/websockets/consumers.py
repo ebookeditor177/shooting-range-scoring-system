@@ -701,6 +701,43 @@ class AdminConsumer(BaseConsumer):
         """Start a new game."""
         await self._start_game_flow(data)
     
+    async def handle_update_config(self, data: dict):
+        """Handle configuration update."""
+        # Update config (could be saved to database if needed)
+        primary_color = data.get('primary_color', '#00ff00')
+        secondary_color = data.get('secondary_color', '#000000')
+        logo_url = data.get('logo_url', '')
+        enable_sound = data.get('enable_sound', True)
+        enable_visual_effects = data.get('enable_visual_effects', True)
+        
+        # Broadcast config update to all clients
+        await self.channel_layer.group_send('all_games', {
+            'type': 'CONFIG_UPDATE',
+            'primary_color': primary_color,
+            'secondary_color': secondary_color,
+            'logo_url': logo_url,
+            'enable_sound': enable_sound,
+            'enable_visual_effects': enable_visual_effects,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+        
+        # Also send to lane groups
+        for lane_num in range(1, 6):
+            await self.channel_layer.group_send(f'lane_{lane_num}', {
+                'type': 'CONFIG_UPDATE',
+                'primary_color': primary_color,
+                'secondary_color': secondary_color,
+                'logo_url': logo_url,
+                'enable_sound': enable_sound,
+                'enable_visual_effects': enable_visual_effects,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+        
+        await self.send_message({
+            'type': 'CONFIG_UPDATED',
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+    
     async def stop_game(self, data: dict):
         """Stop the current game."""
         game_id = data.get('game_id')
