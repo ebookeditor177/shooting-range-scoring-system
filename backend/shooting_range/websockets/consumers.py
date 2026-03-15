@@ -319,10 +319,17 @@ class DeviceConsumer(BaseConsumer):
             
             # Get configuration - use select_related to avoid extra queries
             config = game.configuration
-            sensor_points = config.sensor_points if config else {
-                'head': 100, 'chest': 50, 'stomach': 30,
-                'left_leg': 20, 'right_leg': 20
-            }
+            if not config:
+                # Use default sensor points if no configuration
+                sensor_points = {
+                    'head': 100, 'chest': 50, 'stomach': 30,
+                    'left_leg': 20, 'right_leg': 20
+                }
+            else:
+                sensor_points = config.sensor_points or {
+                    'head': 100, 'chest': 50, 'stomach': 30,
+                    'left_leg': 20, 'right_leg': 20
+                }
             
             # Calculate score
             base_points = sensor_points.get(position, 50)
@@ -861,6 +868,7 @@ class AdminConsumer(BaseConsumer):
         
         if game_id:
             countdown = data.get('countdown', 3)
+            duration = data.get('duration', 60)
             
             # Broadcast game start message
             await self.send_message({
@@ -869,18 +877,13 @@ class AdminConsumer(BaseConsumer):
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             
-            # Run countdown in background - use ensure_future for proper async handling
+            # Run countdown in background
             import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(self._run_countdown(game_id, countdown))
-            else:
-                # If no event loop, run synchronously
-                await self._run_countdown(game_id, countdown)
+            # Use create_task instead of ensure_future for background tasks
+            asyncio.create_task(self._run_countdown(game_id, countdown))
             
             # Schedule game end after duration
-            duration = data.get('duration', 60)
-            asyncio.ensure_future(self._schedule_game_end(game_id, duration))
+            asyncio.create_task(self._schedule_game_end(game_id, duration))
     
     async def _schedule_game_end(self, game_id: str, duration: int):
         """Schedule game to end after duration."""

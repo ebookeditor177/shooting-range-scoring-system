@@ -68,7 +68,8 @@ export function useWebSocket(
       return
     }
 
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.value), 30000)
+    // Don't reconnect too aggressively
+    const delay = Math.min(2000 + (reconnectAttempts.value * 1000), 30000)
     console.log(`Attempting to reconnect in ${delay}ms...`)
 
     setTimeout(() => {
