@@ -737,10 +737,13 @@ class AdminConsumer(BaseConsumer):
         # Update game status to active
         @sync_to_async
         def activate_game():
-            game = Game.objects.get(game_id=game_id)
-            game.status = GameStatus.ACTIVE
-            game.started_at = timezone.now()
-            game.save()
+            try:
+                game = Game.objects.get(game_id=game_id)
+                game.status = GameStatus.ACTIVE
+                game.started_at = timezone.now()
+                game.save()
+            except Game.DoesNotExist:
+                pass
         
         await activate_game()
         
@@ -753,27 +756,26 @@ class AdminConsumer(BaseConsumer):
     
     async def _start_game_flow(self, data: dict):
         """Start game with countdown."""
-        import asyncio
         game_id = await self.create_game(data)
         
         if game_id:
             countdown = data.get('countdown', 3)
             
-            # Broadcast game start
-            await self.channel_layer.group_send('admin', {
-                'type': 'GAME_START',
-                'game_id': game_id,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-            
+            # Broadcast game start message
             await self.send_message({
                 'type': 'GAME_STARTED',
                 'game_id': game_id,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             
-            # Run countdown in background
-            asyncio.create_task(self._run_countdown(game_id, countdown))
+            # Run countdown in background - use ensure_future for proper async handling
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._run_countdown(game_id, countdown))
+            else:
+                # If no event loop, run synchronously
+                await self._run_countdown(game_id, countdown)
     
     @database_sync_to_async
     def end_game(self, game_id: str):
