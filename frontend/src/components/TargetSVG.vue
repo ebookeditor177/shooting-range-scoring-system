@@ -12,11 +12,11 @@ const store = useGameStore()
 
 // Sensor positions on the target silhouette (percentage-based)
 const sensorZones = [
-  { id: 'head', cx: 50, cy: 15, r: 12, label: 'HEAD', points: 100 },
-  { id: 'chest', cx: 50, cy: 40, r: 15, label: 'CHEST', points: 50 },
-  { id: 'stomach', cx: 50, cy: 60, r: 12, label: 'STOMACH', points: 30 },
-  { id: 'left_leg', cx: 35, cy: 80, r: 8, label: 'L LEG', points: 20 },
-  { id: 'right_leg', cx: 65, cy: 80, r: 8, label: 'R LEG', points: 20 }
+  { id: 'head', cx: 50, cy: 12, r: 10, label: 'HEAD', points: 100 },
+  { id: 'chest', cx: 50, cy: 35, r: 14, label: 'CHEST', points: 50 },
+  { id: 'stomach', cx: 50, cy: 55, r: 10, label: 'STOMACH', points: 30 },
+  { id: 'left_leg', cx: 38, cy: 78, r: 7, label: 'L LEG', points: 20 },
+  { id: 'right_leg', cx: 62, cy: 78, r: 7, label: 'R LEG', points: 20 }
 ]
 
 // Hit markers to display
@@ -66,7 +66,7 @@ function triggerFlash() {
   isFlashing.value = true
   setTimeout(() => {
     isFlashing.value = false
-  }, 300)
+  }, 150)
 }
 
 const primaryColor = computed(() => props.primaryColor || store.config.primaryColor || '#00ff00')
@@ -75,35 +75,42 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
 <template>
   <div class="target-container" :class="{ 'flash-active': isFlashing }">
     <svg viewBox="0 0 100 100" class="target-svg">
-      <!-- Target silhouette -->
+      <!-- Definitions -->
       <defs>
-        <linearGradient id="bodyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" :style="`stop-color:${primaryColor};stop-opacity:0.3`" />
-          <stop offset="100%" :style="`stop-color:${primaryColor};stop-opacity:0.1`" />
+        <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" :style="`stop-color:${primaryColor};stop-opacity:0.25`" />
+          <stop offset="100%" :style="`stop-color:${primaryColor};stop-opacity:0.05`" />
         </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
       </defs>
 
-      <!-- Body silhouette -->
+      <!-- Body silhouette - cleaner shape -->
       <path
-        d="M50 5 
-           C60 5 68 12 70 20
-           C72 25 72 30 70 35
-           L75 45 L72 55 L70 70
-           L65 85 L60 95
-           L55 95 L52 85
-           L50 75
-           L48 85 L45 95
-           L40 95 L35 85 L30 70
-           L28 55 L25 45 L30 35
-           C28 30 28 25 30 20
-           C32 12 40 5 50 5 Z"
-        fill="url(#bodyGradient)"
+        d="M50 4 
+           C62 4 70 10 72 18
+           C74 24 74 30 72 36
+           L78 44 L74 54 L72 70
+           L68 85 L62 96
+           L56 96 L53 86
+           L50 76
+           L47 86 L44 96
+           L38 96 L32 85 L28 70
+           L26 54 L22 44 L28 36
+           C26 30 26 24 28 18
+           C30 10 38 4 50 4 Z"
+        fill="url(#bodyGrad)"
         :stroke="primaryColor"
-        stroke-width="0.5"
-        class="body-outline"
+        stroke-width="0.8"
+        filter="url(#glow)"
       />
 
-      <!-- Sensor zone circles (dashed) -->
+      <!-- Sensor zone circles -->
       <circle
         v-for="zone in sensorZones"
         :key="zone.id"
@@ -112,9 +119,9 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
         :r="zone.r"
         fill="none"
         :stroke="primaryColor"
-        stroke-width="0.3"
-        stroke-dasharray="2,1"
-        class="sensor-zone"
+        stroke-width="0.5"
+        stroke-dasharray="3,2"
+        opacity="0.6"
       />
 
       <!-- Hit markers -->
@@ -122,44 +129,20 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
         <circle
           :cx="marker.x"
           :cy="marker.y"
-          r="3"
+          r="2.5"
           :fill="primaryColor"
-          class="hit-marker"
+          filter="url(#glow)"
         >
           <animate
             attributeName="opacity"
             from="1"
             to="0"
-            dur="1s"
+            dur="1.5s"
             begin="0s"
             fill="freeze"
           />
         </circle>
-        <!-- Hit score popup -->
-        <text
-          :x="marker.x + 4"
-          :y="marker.y - 4"
-          :fill="primaryColor"
-          font-size="3"
-          class="hit-score"
-        >
-          +{{ store.recentHits.find(h => h.position === marker.position)?.score || 0 }}
-        </text>
       </g>
-
-      <!-- Labels -->
-      <text
-        v-for="zone in sensorZones"
-        :key="'label-' + zone.id"
-        :x="zone.cx"
-        :y="zone.cy + zone.r + 3"
-        :fill="primaryColor"
-        font-size="2"
-        text-anchor="middle"
-        class="zone-label"
-      >
-        {{ zone.label }}
-      </text>
     </svg>
   </div>
 </template>
@@ -171,49 +154,15 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.1s ease;
 }
 
 .target-container.flash-active {
-  background-color: rgba(0, 255, 0, 0.2);
+  background-color: rgba(0, 255, 0, 0.15);
 }
 
 .target-svg {
-  width: 90%;
-  height: 90%;
-  max-width: 500px;
-  max-height: 800px;
-}
-
-.body-outline {
-  transition: stroke-width 0.3s ease;
-}
-
-.sensor-zone {
-  opacity: 0.5;
-}
-
-.hit-marker {
-  filter: drop-shadow(0 0 3px currentColor);
-}
-
-.hit-score {
-  animation: score-float 1s ease-out forwards;
-}
-
-.zone-label {
-  opacity: 0.7;
-  font-weight: bold;
-}
-
-@keyframes score-float {
-  0% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-10px);
-    opacity: 0;
-  }
+  width: 100%;
+  height: 100%;
 }
 </style>

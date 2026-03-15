@@ -11,16 +11,9 @@ const props = defineProps<{
 const store = useGameStore()
 
 const displayScore = ref(0)
-const scoreAnimation = ref(false)
 
 // Animate score changes
 watch(() => store.currentScore(props.laneNumber), (newScore) => {
-  if (newScore > displayScore.value) {
-    scoreAnimation.value = true
-    setTimeout(() => {
-      scoreAnimation.value = false
-    }, 300)
-  }
   displayScore.value = newScore
 }, { immediate: true })
 
@@ -36,33 +29,16 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
   <div class="score-display">
     <div class="score-main">
       <span class="score-label">SCORE</span>
-      <span 
-        class="score-value" 
-        :class="{ 'score-animate': scoreAnimation }"
-        :style="{ color: primaryColor }"
-      >
+      <span class="score-value" :style="{ color: primaryColor }">
         {{ displayScore }}
       </span>
     </div>
-
-    <div class="score-details" v-if="targetScore">
-      <div class="progress-bar">
-        <div 
-          class="progress-fill"
-          :style="{ 
-            width: `${progress}%`,
-            backgroundColor: primaryColor 
-          }"
-        ></div>
-      </div>
-      <div class="score-target">
-        Target: {{ targetScore }}
-      </div>
+    <div class="progress-bar">
+      <div class="progress-fill" :style="{ width: `${progress}%`, backgroundColor: primaryColor }"></div>
     </div>
-
-    <div class="hit-count">
-      <span class="hits-label">HITS</span>
-      <span class="hits-value">{{ store.totalHits(laneNumber) }}</span>
+    <div class="score-meta">
+      <span>{{ store.totalHits(props.laneNumber) }} HITS</span>
+      <span>TARGET: {{ targetScore || 1000 }}</span>
     </div>
   </div>
 </template>
@@ -71,72 +47,46 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
 .score-display {
   background: rgba(0, 0, 0, 0.8);
   border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 20px 30px;
+  border-radius: 20px;
+  padding: 24px 40px;
   text-align: center;
-}
-
-.score-main {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
 }
 
 .score-label {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 3px;
-  font-weight: bold;
+  letter-spacing: 4px;
+  font-weight: 600;
 }
 
 .score-value {
-  font-size: 72px;
-  font-weight: bold;
-  text-shadow: 0 0 20px currentColor;
-  transition: transform 0.15s ease;
-}
-
-.score-value.score-animate {
-  transform: scale(1.1);
-}
-
-.score-details {
-  margin-top: 15px;
+  display: block;
+  font-size: 64px;
+  font-weight: 900;
+  text-shadow: 0 0 30px currentColor;
+  line-height: 1.1;
 }
 
 .progress-bar {
-  height: 8px;
+  height: 6px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  border-radius: 3px;
   overflow: hidden;
+  margin-top: 16px;
 }
 
 .progress-fill {
   height: 100%;
   transition: width 0.3s ease;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
-.score-target {
-  margin-top: 8px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.hit-count {
-  margin-top: 15px;
+.score-meta {
   display: flex;
-  justify-content: center;
-  gap: 10px;
-  font-size: 16px;
-}
-
-.hits-label {
-  color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 2px;
-}
-
-.hits-value {
-  font-weight: bold;
+  justify-content: space-between;
+  margin-top: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 1px;
 }
 </style>
