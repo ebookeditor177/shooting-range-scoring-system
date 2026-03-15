@@ -547,14 +547,24 @@ class DeviceConsumer(BaseConsumer):
     @database_sync_to_async
     def get_game_scores_by_id(self, game_id: str):
         from shooting_range.games.models import Game
+        from shooting_range.hits.models import HitEvent
+        from django.db.models import Count
         scores = []
         try:
             game = Game.objects.get(game_id=game_id)
             for ls in game.lane_scores.select_related('lane').all():
+                lane_num = ls.lane.lane_number
+                hits_by_position = dict(
+                    HitEvent.objects.filter(game=game, lane=ls.lane)
+                    .values('position')
+                    .annotate(count=Count('id'))
+                    .values_list('position', 'count')
+                )
                 scores.append({
-                    'lane': ls.lane.lane_number,
+                    'lane': lane_num,
                     'score': ls.score,
-                    'hit_count': ls.hit_count
+                    'hit_count': ls.hit_count,
+                    'hits_by_position': hits_by_position
                 })
         except Game.DoesNotExist:
             pass
@@ -1189,42 +1199,60 @@ class AdminConsumer(BaseConsumer):
             try:
                 game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
                 
-                # Find winner (lane with highest score)
+                # Find winner(s) - in individual mode, anyone above win score wins
                 from shooting_range.lanes.models import LaneScore, Lane
-                lane_scores = LaneScore.objects.filter(game=game).select_related('lane').order_by('-score')
-                winner = lane_scores.first()
-                winner_lane_number = winner.lane.lane_number if winner and winner.score > 0 else None
+                from django.conf import settings
+                
+                win_score = getattr(settings, 'DEFAULT_WIN_SCORE', 1000)
+                use_win_score = getattr(settings, 'USE_WIN_SCORE', True)
+                
+                lane_scores = LaneScore.objects.filter(game=game).select_related('lane')
+                
+                # Get all winners (lanes with score >= win_score)
+                winners = []
+                all_winners = []
+                
+                if use_win_score:
+                    for ls in lane_scores:
+                        if ls.score >= win_score:
+                            all_winners.append(ls.lane.lane_number)
+                
+                # Also get the highest scorer as primary winner
+                highest = lane_scores.order_by('-score').first()
+                primary_winner = highest.lane.lane_number if highest and highest.score > 0 else None
                 
                 game.status = GameStatus.ENDED
                 game.ended_at = timezone.now()
                 
-                # Set winner lane object
-                if winner_lane_number:
-                    lane = Lane.objects.filter(lane_number=winner_lane_number).first()
+                # Set winner lane (first one to reach win score)
+                if primary_winner:
+                    lane = Lane.objects.filter(lane_number=primary_winner).first()
                     if lane:
                         game.winner_lane = lane
                 
                 game.save()
-                return winner_lane_number
+                
+                # Return all winners for individual mode
+                return all_winners if all_winners else [primary_winner] if primary_winner else []
             except Game.DoesNotExist:
-                return None
+                return []
         
-        winner_lane = await check_and_end_game()
+        winners = await check_and_end_game()
         
-        if winner_lane is not None or True:  # Always broadcast even if no winner
+        if winners:
             # Get final scores
             final_scores = await self.get_game_scores_by_id(game_id)
             
             # Broadcast game end
             await self.channel_layer.group_send(f'game_{game_id}', {
                 'type': 'GAME_END',
-                'winner_lane': winner_lane,
+                'winner_lane': winners,
                 'final_scores': final_scores,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             await self.channel_layer.group_send('all_games', {
                 'type': 'GAME_END',
-                'winner_lane': winner_lane,
+                'winner_lane': winners,
                 'final_scores': final_scores,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
