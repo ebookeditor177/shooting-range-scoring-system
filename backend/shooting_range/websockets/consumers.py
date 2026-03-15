@@ -458,6 +458,9 @@ class DeviceConsumer(BaseConsumer):
             
             # Send to game group
             await self.channel_layer.group_send(f"game_{result['game_id']}", hit_message)
+            
+            # Send to game_broadcast group (all connected clients)
+            await self.channel_layer.group_send("game_broadcast", hit_message)
         
         # Check if any lane reached win score - end game early if so
         if result['game_id']:
@@ -473,36 +476,47 @@ class DeviceConsumer(BaseConsumer):
         def check_and_end():
             from shooting_range.games.models import Game, GameStatus
             from shooting_range.lanes.models import Lane, LaneScore
-            from django.conf import settings
             
             try:
-                game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
+                game = Game.objects.select_related('configuration').get(game_id=game_id, status=GameStatus.ACTIVE)
                 
-                # Check if win score is enabled
-                win_score = getattr(settings, 'DEFAULT_WIN_SCORE', 1000)
-                use_win_score = getattr(settings, 'USE_WIN_SCORE', True)
+                # Get win score from game config, not settings
+                config = game.configuration
+                win_score = config.win_score if config else 1000
+                use_win_score = game.use_win_score if config else True
                 
-                # In individual mode, multiple winners are allowed
-                if use_win_score and score >= win_score:
-                    # Get the lane object
-                    lane = Lane.objects.filter(lane_number=lane_number).first()
-                    
-                    # For individual mode, we set winner but don't end game yet
-                    # The game will end when time is up or admin stops it
+                # Get all lane scores for this game
+                lane_scores = LaneScore.objects.filter(game=game).select_related('lane')
+                
+                # In individual mode, find ALL lanes that reached win score
+                winners = []
+                if use_win_score:
                     if game.mode == 'individual':
-                        # In individual mode, each lane that reaches win score wins
-                        # Set this lane as a winner (could be multiple)
-                        game.winner_lane = lane
-                        game.save()
-                        return [lane_number]  # Return list of winners
+                        # Individual mode: all lanes that reached win_score are winners
+                        for ls in lane_scores:
+                            if ls.score >= win_score:
+                                winners.append(ls.lane.lane_number)
+                        
+                        # Mark game as ended if any winner
+                        if winners:
+                            game.status = GameStatus.ENDED
+                            game.ended_at = timezone.now()
+                            # Set first winner as primary
+                            primary_lane = Lane.objects.filter(lane_number=winners[0]).first()
+                            if primary_lane:
+                                game.winner_lane = primary_lane
+                            game.save()
+                            return winners
                     else:
-                        # In all-lanes mode, first to reach win score wins
-                        game.status = GameStatus.ENDED
-                        game.ended_at = timezone.now()
-                        if lane:
-                            game.winner_lane = lane
-                        game.save()
-                        return [lane_number]
+                        # All-lanes mode: first to reach wins
+                        if score >= win_score:
+                            lane = Lane.objects.filter(lane_number=lane_number).first()
+                            if lane:
+                                game.winner_lane = lane
+                            game.status = GameStatus.ENDED
+                            game.ended_at = timezone.now()
+                            game.save()
+                            return [lane_number]
                 return []
             except Game.DoesNotExist:
                 return []
@@ -521,6 +535,12 @@ class DeviceConsumer(BaseConsumer):
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             await self.channel_layer.group_send('all_games', {
+                'type': 'GAME_END',
+                'winner_lane': winners,
+                'final_scores': final_scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            await self.channel_layer.group_send('game_broadcast', {
                 'type': 'GAME_END',
                 'winner_lane': winners,
                 'final_scores': final_scores,
@@ -609,6 +629,9 @@ class ClientConsumer(BaseConsumer):
                 })
             except ValueError:
                 pass
+        
+        # Also join a general game group (clients will receive game-specific updates)
+        await self.join_group('game_broadcast')
         
         # Auto-authenticate for simplicity
         await self.send_message({
@@ -868,6 +891,7 @@ class AdminConsumer(BaseConsumer):
         await super().connect()
         await self.join_group('admin')
         await self.join_group('all_games')
+        await self.join_group('game_broadcast')
         
         # Subscribe to all lane groups for hit events
         for lane_num in range(1, 6):
@@ -1131,6 +1155,13 @@ class AdminConsumer(BaseConsumer):
                 'game_id': game_id,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
+            # Also send to game_broadcast
+            await self.channel_layer.group_send('game_broadcast', {
+                'type': 'GAME_COUNTDOWN',
+                'count': i,
+                'game_id': game_id,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
             await asyncio.sleep(1)
         
         # Update game status to active
@@ -1155,6 +1186,13 @@ class AdminConsumer(BaseConsumer):
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
         await self.channel_layer.group_send('all_games', {
+            'type': 'GAME_START',
+            'game_id': game_id,
+            'duration': game_duration,
+            'config': config_data,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+        await self.channel_layer.group_send('game_broadcast', {
             'type': 'GAME_START',
             'game_id': game_id,
             'duration': game_duration,
@@ -1197,43 +1235,49 @@ class AdminConsumer(BaseConsumer):
         @sync_to_async
         def check_and_end_game():
             try:
-                game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
+                game = Game.objects.select_related('configuration').get(game_id=game_id, status=GameStatus.ACTIVE)
                 
-                # Find winner(s) - in individual mode, anyone above win score wins
-                from shooting_range.lanes.models import LaneScore, Lane
-                from django.conf import settings
-                
-                win_score = getattr(settings, 'DEFAULT_WIN_SCORE', 1000)
-                use_win_score = getattr(settings, 'USE_WIN_SCORE', True)
+                # Get win score from game config, not settings
+                config = game.configuration
+                win_score = config.win_score if config else 1000
+                use_win_score = game.use_win_score if config else True
                 
                 lane_scores = LaneScore.objects.filter(game=game).select_related('lane')
                 
                 # Get all winners (lanes with score >= win_score)
                 winners = []
-                all_winners = []
                 
                 if use_win_score:
-                    for ls in lane_scores:
-                        if ls.score >= win_score:
-                            all_winners.append(ls.lane.lane_number)
+                    # In individual mode, anyone above win_score wins
+                    if game.mode == 'individual':
+                        for ls in lane_scores:
+                            if ls.score >= win_score:
+                                winners.append(ls.lane.lane_number)
+                    else:
+                        # In all-lanes mode, highest score wins
+                        highest = lane_scores.order_by('-score').first()
+                        if highest:
+                            winners = [highest.lane.lane_number]
                 
-                # Also get the highest scorer as primary winner
-                highest = lane_scores.order_by('-score').first()
-                primary_winner = highest.lane.lane_number if highest and highest.score > 0 else None
+                # If no one reached win_score in individual mode, highest score still wins
+                if not winners and lane_scores:
+                    highest = lane_scores.order_by('-score').first()
+                    if highest:
+                        winners = [highest.lane.lane_number]
                 
                 game.status = GameStatus.ENDED
                 game.ended_at = timezone.now()
                 
-                # Set winner lane (first one to reach win score)
-                if primary_winner:
-                    lane = Lane.objects.filter(lane_number=primary_winner).first()
+                # Set winner lane
+                if winners:
+                    lane = Lane.objects.filter(lane_number=winners[0]).first()
                     if lane:
                         game.winner_lane = lane
                 
                 game.save()
                 
-                # Return all winners for individual mode
-                return all_winners if all_winners else [primary_winner] if primary_winner else []
+                # Return all winners
+                return winners if winners else []
             except Game.DoesNotExist:
                 return []
         
@@ -1251,6 +1295,12 @@ class AdminConsumer(BaseConsumer):
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             await self.channel_layer.group_send('all_games', {
+                'type': 'GAME_END',
+                'winner_lane': winners,
+                'final_scores': final_scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            await self.channel_layer.group_send('game_broadcast', {
                 'type': 'GAME_END',
                 'winner_lane': winners,
                 'final_scores': final_scores,
