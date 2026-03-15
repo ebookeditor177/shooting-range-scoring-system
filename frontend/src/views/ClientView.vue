@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useGameStore } from '@/stores/gameStore'
-import { useWebSocket } from '@/composables/useWebSocket'
+import { useClientWebSocket, type WebSocketMessage } from '@/composables/useWebSocket'
 import TargetSVG from '@/components/TargetSVG.vue'
 import ScoreDisplay from '@/components/ScoreDisplay.vue'
 
@@ -15,7 +15,10 @@ const laneNumber = computed(() => {
 })
 
 // WebSocket connection
-const { isConnected, connectionError } = useWebSocket(laneNumber.value)
+const { isConnected, connectionError } = useClientWebSocket(
+  laneNumber.value,
+  handleMessage
+)
 
 // Timer
 let timerInterval: number | null = null
@@ -33,6 +36,67 @@ const stopTimer = () => {
   if (timerInterval) {
     clearInterval(timerInterval)
     timerInterval = null
+  }
+}
+
+// Message handler
+function handleMessage(msg: WebSocketMessage) {
+  console.log('Received message:', msg)
+  
+  switch (msg.type) {
+    case 'AUTHENTICATED':
+      // Subscribe to lane
+      break
+      
+    case 'SUBSCRIBED':
+      console.log('Subscribed to lane:', msg.lane)
+      break
+      
+    case 'LANE_STATUS':
+      store.setLaneStatus(msg)
+      break
+      
+    case 'GAME_COUNTDOWN':
+      store.setCountdown(msg.count)
+      break
+      
+    case 'GAME_START':
+      store.startGame(msg.game_id, msg.duration)
+      store.setCountdown(0)
+      break
+      
+    case 'GAME_STARTED':
+      if (msg.countdown) {
+        store.setCountdown(msg.countdown)
+      }
+      store.startGame(msg.game_id, msg.duration || 60)
+      store.setCountdown(0)
+      break
+      
+    case 'GAME_STOP':
+      store.setGameState({ status: 'idle' })
+      store.setCountdown(0)
+      break
+      
+    case 'GAME_END':
+      store.endGame(msg.winner_lane, msg.final_scores || [])
+      store.setCountdown(0)
+      break
+      
+    case 'HIT_EVENT':
+      if (msg.lane === laneNumber.value) {
+        store.addHit(msg as any)
+        store.setScore(msg as any)
+      }
+      break
+      
+    case 'SCORE_UPDATE':
+      store.setScore(msg)
+      break
+      
+    case 'CONFIG_UPDATE':
+      store.setConfig(msg)
+      break
   }
 }
 
@@ -59,7 +123,6 @@ const laneStatus = computed(() => store.lanes.get(laneNumber.value))
 const isWinner = computed(() => {
   // In individual mode, anyone who reaches win score wins
   if (store.gameState.winner_lane === null || store.gameState.winner_lane === undefined) {
-    // Check if this lane reached the win score
     return store.currentScore(laneNumber.value) >= 1000
   }
   return store.gameState.winner_lane === laneNumber.value
