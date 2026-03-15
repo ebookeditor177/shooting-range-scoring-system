@@ -300,89 +300,92 @@ class DeviceConsumer(BaseConsumer):
         from shooting_range.lanes.models import LaneScore as LaneScoreModel
         from asgiref.sync import sync_to_async
         
-        # Find active game for this lane
+        # Wrap all DB operations in a sync function
         @sync_to_async
-        def get_active_game(lane):
-            return Game.objects.filter(
+        def process_hit_sync(lane_num, position, accuracy, raw_strength, event_timestamp):
+            from django.utils import timezone
+            from datetime import datetime
+            
+            # Find active game for this lane
+            game = Game.objects.filter(
                 status=GameStatus.ACTIVE,
-                active_lanes=lane
+                active_lanes__lane_number=lane_num
             ).first()
+            
+            result = {'score': 0, 'game_id': None, 'hit_count': 0, 'total_score': 0}
+            
+            if not game:
+                return result
+            
+            # Get configuration - use select_related to avoid extra queries
+            config = game.configuration
+            sensor_points = config.sensor_points if config else {
+                'head': 100, 'chest': 50, 'stomach': 30,
+                'left_leg': 20, 'right_leg': 20
+            }
+            
+            # Calculate score
+            base_points = sensor_points.get(position, 50)
+            score = int(base_points * accuracy)
+            
+            # Get or create lane score
+            lane_score, _ = LaneScoreModel.objects.get_or_create(
+                game=game,
+                lane_id=lane.id,
+                defaults={'score': 0, 'hit_count': 0}
+            )
+            
+            # Update score
+            lane_score.score += score
+            lane_score.hit_count += 1
+            lane_score.last_hit_at = timezone.now()
+            lane_score.save()
+            
+            # Create hit event
+            try:
+                event_time = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
+            except:
+                event_time = timezone.now()
+            
+            HitEvent.objects.create(
+                game=game,
+                lane=lane,
+                position=position,
+                accuracy=accuracy,
+                raw_strength=raw_strength,
+                score=score,
+                timestamp=event_time
+            )
+            
+            result = {
+                'score': score,
+                'game_id': str(game.game_id),
+                'hit_count': lane_score.hit_count,
+                'total_score': lane_score.score
+            }
+            
+            return result
         
-        game = await get_active_game(lane)
+        result = await process_hit_sync(lane.lane_number, position, accuracy, raw_strength, event_timestamp)
         
-        result = {'score': 0, 'game_id': None}
-        
-        if not game:
-            # No active game, still broadcast the hit
-            await self.channel_layer.group_send(f"lane_{lane.lane_number}", {
+        # Broadcast hit to all clients (only if there was an active game)
+        if result['game_id']:
+            hit_message = {
                 'type': 'HIT_EVENT',
                 'lane': lane.lane_number,
                 'position': position,
                 'accuracy': accuracy,
-                'score': 0,
+                'score': result['score'],
+                'total_score': result['total_score'],
+                'hit_count': result['hit_count'],
                 'timestamp': event_timestamp
-            })
-            return result
-        
-        # Calculate score
-        score = game.get_score_for_position(position, accuracy)
-        
-        # Create hit event
-        try:
-            event_time = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
-        except:
-            event_time = timezone.now()
-        
-        await sync_to_async(HitEvent.objects.create)(
-            game=game,
-            lane=lane,
-            position=position,
-            accuracy=accuracy,
-            raw_strength=raw_strength,
-            score=score,
-            event_timestamp=event_time
-        )
-        
-        # Update lane score
-        lane_score, _ = await sync_to_async(LaneScoreModel.objects.get_or_create)(
-            lane=lane,
-            game=game,
-            defaults={'score': 0, 'hit_count': 0}
-        )
-        lane_score.score += score
-        lane_score.hit_count += 1
-        lane_score.last_hit_at = timezone.now()
-        await sync_to_async(lane_score.save)()
-        
-        result = {'score': score, 'game_id': str(game.game_id)}
-        
-        # Broadcast hit to all clients
-        hit_message = {
-            'type': 'HIT_EVENT',
-            'lane': lane.lane_number,
-            'position': position,
-            'accuracy': accuracy,
-            'score': score,
-            'total_score': lane_score.score,
-            'hit_count': lane_score.hit_count,
-            'timestamp': event_timestamp
-        }
-        
-        # Send to lane group
-        await self.channel_layer.group_send(f"lane_{lane.lane_number}", hit_message)
-        
-        # Send to game group
-        await self.channel_layer.group_send(f"game_{game.game_id}", hit_message)
-        
-        # Check for win condition
-        if game.use_win_score and lane_score.score >= game.win_score:
-            final_scores = await self.get_game_scores(game)
-            await self.channel_layer.group_send(f"game_{game.game_id}", {
-                'type': 'GAME_END',
-                'winner_lane': lane.lane_number,
-                'final_scores': final_scores
-            })
-            await sync_to_async(game.end)()
+            }
+            
+            # Send to lane group
+            await self.channel_layer.group_send(f"lane_{lane.lane_number}", hit_message)
+            
+            # Send to game group
+            await self.channel_layer.group_send(f"game_{result['game_id']}", hit_message)
         
         return result
     
