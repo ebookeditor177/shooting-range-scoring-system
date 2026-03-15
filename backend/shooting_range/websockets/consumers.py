@@ -405,6 +405,22 @@ class DeviceConsumer(BaseConsumer):
                 'hit_count': ls.hit_count
             })
         return scores
+    
+    @database_sync_to_async
+    def get_game_scores_by_id(self, game_id: str):
+        from shooting_range.games.models import Game
+        scores = []
+        try:
+            game = Game.objects.get(game_id=game_id)
+            for ls in game.lane_scores.select_related('lane').all():
+                scores.append({
+                    'lane': ls.lane.lane_number,
+                    'score': ls.score,
+                    'hit_count': ls.hit_count
+                })
+        except Game.DoesNotExist:
+            pass
+        return scores
 
 
 class ClientConsumer(BaseConsumer):
@@ -763,6 +779,17 @@ class AdminConsumer(BaseConsumer):
         from shooting_range.games.models import Game, GameStatus
         from asgiref.sync import sync_to_async
         
+        # Get game duration
+        @sync_to_async
+        def get_game_duration():
+            try:
+                game = Game.objects.get(game_id=game_id)
+                return game.duration
+            except Game.DoesNotExist:
+                return 60
+        
+        game_duration = await get_game_duration()
+        
         for i in range(countdown_seconds, 0, -1):
             # Send to game-specific group
             await self.channel_layer.group_send(f'game_{game_id}', {
@@ -796,14 +823,14 @@ class AdminConsumer(BaseConsumer):
         await self.channel_layer.group_send(f'game_{game_id}', {
             'type': 'GAME_START',
             'game_id': game_id,
-            'duration': 60,
+            'duration': game_duration,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
         # Also send to all_games group
         await self.channel_layer.group_send('all_games', {
             'type': 'GAME_START',
             'game_id': game_id,
-            'duration': 60,
+            'duration': game_duration,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
     
@@ -829,6 +856,48 @@ class AdminConsumer(BaseConsumer):
             else:
                 # If no event loop, run synchronously
                 await self._run_countdown(game_id, countdown)
+            
+            # Schedule game end after duration
+            duration = data.get('duration', 60)
+            asyncio.ensure_future(self._schedule_game_end(game_id, duration))
+    
+    async def _schedule_game_end(self, game_id: str, duration: int):
+        """Schedule game to end after duration."""
+        import asyncio
+        await asyncio.sleep(duration)
+        
+        # Check if game is still active
+        from shooting_range.games.models import Game, GameStatus
+        from asgiref.sync import sync_to_async
+        
+        @sync_to_async
+        def check_and_end_game():
+            try:
+                game = Game.objects.get(game_id=game_id, status=GameStatus.ACTIVE)
+                game.status = GameStatus.ENDED
+                game.ended_at = timezone.now()
+                game.save()
+                return True
+            except Game.DoesNotExist:
+                return False
+        
+        if await check_and_end_game():
+            # Get final scores
+            final_scores = await self.get_game_scores_by_id(game_id)
+            
+            # Broadcast game end
+            await self.channel_layer.group_send(f'game_{game_id}', {
+                'type': 'GAME_END',
+                'winner_lane': None,
+                'final_scores': final_scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            await self.channel_layer.group_send('all_games', {
+                'type': 'GAME_END',
+                'winner_lane': None,
+                'final_scores': final_scores,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
     
     @database_sync_to_async
     def end_game(self, game_id: str):
