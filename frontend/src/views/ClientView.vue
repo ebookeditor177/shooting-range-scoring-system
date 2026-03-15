@@ -78,6 +78,7 @@ function handleMessage(msg: WebSocketMessage) {
         }
       }
       store.startGame(msg.game_id, msg.duration || 60)
+      store.setCountdown(0) // Reset countdown when game actually starts
       if (store.config.enableSound) {
         playStartSound()
       }
@@ -85,10 +86,12 @@ function handleMessage(msg: WebSocketMessage) {
 
     case 'GAME_STOP':
       store.setGameState({ status: 'idle' })
+      store.setCountdown(0) // Reset countdown on stop
       break
 
     case 'GAME_END':
       store.endGame(msg.winner_lane, msg.final_scores || [])
+      store.setCountdown(0) // Reset countdown on end
       if (store.config.enableSound) {
         playEndSound()
       }

@@ -209,6 +209,7 @@ export const useGameStore = defineStore('game', () => {
     isGameEnded,
     currentScore,
     totalHits,
+    hitsByPosition,
     // Actions
     setLaneStatus,
     setAllLanes,
