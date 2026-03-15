@@ -301,10 +301,14 @@ class DeviceConsumer(BaseConsumer):
         from asgiref.sync import sync_to_async
         
         # Find active game for this lane
-        game = await sync_to_async(Game.objects.filter)(
-            status=GameStatus.ACTIVE,
-            active_lanes=lane
-        ).first()
+        @sync_to_async
+        def get_active_game(lane):
+            return Game.objects.filter(
+                status=GameStatus.ACTIVE,
+                active_lanes=lane
+            ).first()
+        
+        game = await get_active_game(lane)
         
         result = {'score': 0, 'game_id': None}
         
