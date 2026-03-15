@@ -235,28 +235,30 @@ class DeviceConsumer(BaseConsumer):
             defaults={
                 'supported_sensors': sensors,
                 'firmware_version': firmware,
-                'status': 'registered'
+                'status': 'registered',
+                'is_online': True
             }
         )
         if not created:
             device.supported_sensors = sensors
             device.firmware_version = firmware
             device.status = 'registered'
+            device.is_online = True
             device.save()
         return device
     
     @database_sync_to_async
     def get_lane_by_number(self, lane_number: int):
         from shooting_range.lanes.models import Lane
-        try:
-            return Lane.objects.get(lane_number=lane_number)
-        except Lane.DoesNotExist:
-            return None
+        lane, created = Lane.objects.get_or_create(
+            lane_number=lane_number,
+            defaults={'name': f'Lane {lane_number}', 'is_enabled': True}
+        )
+        return lane
     
     @database_sync_to_async
     def assign_device_to_lane(self, device, lane):
-        device.lane = lane
-        device.save()
+        # Set device on the lane (not lane on device)
         lane.device = device
         lane.save()
     
@@ -840,11 +842,18 @@ class AdminConsumer(BaseConsumer):
         from shooting_range.devices.models import Device
         from shooting_range.games.models import Game, GameStatus
         
+        # Auto-create lanes 1-5 if they don't exist
+        for lane_num in range(1, 6):
+            Lane.objects.get_or_create(
+                lane_number=lane_num,
+                defaults={'name': f'Lane {lane_num}', 'is_enabled': True}
+            )
+        
         lanes = []
         for lane in Lane.objects.all():
             lanes.append({
                 'lane_number': lane.lane_number,
-                'name': lane.name,
+                'name': lane.name or f'Lane {lane.lane_number}',
                 'is_enabled': lane.is_enabled,
                 'is_active': lane.is_active,
                 'is_connected': lane.is_connected,
