@@ -354,7 +354,7 @@ class DeviceConsumer(BaseConsumer):
                 accuracy=accuracy,
                 raw_strength=raw_strength,
                 score=score,
-                timestamp=event_time
+                event_timestamp=event_time
             )
             
             result = {
