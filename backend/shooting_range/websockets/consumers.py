@@ -660,6 +660,11 @@ class AdminConsumer(BaseConsumer):
     async def connect(self):
         await super().connect()
         await self.join_group('admin')
+        await self.join_group('all_games')
+        
+        # Subscribe to all lane groups for hit events
+        for lane_num in range(1, 6):
+            await self.join_group(f'lane_{lane_num}')
         
         # Auto-authenticate and send status
         await self.send_message({

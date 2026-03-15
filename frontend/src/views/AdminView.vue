@@ -48,7 +48,16 @@ function handleMessage(msg: WebSocketMessage) {
       break
 
     case 'GAME_STARTED':
+    case 'GAME_START':
+      store.startGame(msg.game_id, msg.duration)
       activeGameId.value = msg.game_id
+      break
+
+    case 'GAME_COUNTDOWN':
+      store.setGameState({
+        status: 'countdown',
+        remaining_time: msg.count
+      })
       break
 
     case 'GAME_STOPPED':
