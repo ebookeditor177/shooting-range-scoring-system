@@ -55,9 +55,13 @@ function handleMessage(msg: WebSocketMessage) {
     case 'GAME_START':
       store.startGame(msg.game_id, msg.duration)
       store.setCountdown(0)
-      // Update config from game start
+      // Update config from game start (convert snake_case to camelCase)
       if (msg.config) {
-        store.setConfig(msg.config)
+        store.setConfig({
+          primaryColor: msg.config.primary_color || '#00ff00',
+          winScore: msg.config.win_score || 1000,
+          useWinScore: msg.config.use_win_score !== false
+        })
       }
       break
       

@@ -1086,16 +1086,26 @@ class AdminConsumer(BaseConsumer):
         from shooting_range.games.models import Game, GameStatus
         from asgiref.sync import sync_to_async
         
-        # Get game duration
+        # Get game duration and config
         @sync_to_async
-        def get_game_duration():
+        def get_game_info():
             try:
-                game = Game.objects.get(game_id=game_id)
-                return game.duration
+                game = Game.objects.select_related('configuration').get(game_id=game_id)
+                config = game.configuration
+                return game.duration, config
             except Game.DoesNotExist:
-                return 60
+                return 60, None
         
-        game_duration = await get_game_duration()
+        game_duration, config = await get_game_info()
+        
+        # Get config data
+        config_data = {}
+        if config:
+            config_data = {
+                'primary_color': config.primary_color or '#00ff00',
+                'win_score': config.win_score or 1000,
+                'use_win_score': config.use_win_score,
+            }
         
         for i in range(countdown_seconds, 0, -1):
             # Send to game-specific group
@@ -1126,17 +1136,7 @@ class AdminConsumer(BaseConsumer):
         
         await activate_game()
         
-        # Get config to send with game start
-        config = game.configuration if game else None
-        config_data = {}
-        if config:
-            config_data = {
-                'primary_color': config.primary_color or '#00ff00',
-                'win_score': config.win_score or 1000,
-                'use_win_score': config.use_win_score,
-            }
-        
-        # Send to game-specific group
+        # Send GAME_START to groups (this clears countdown on clients)
         await self.channel_layer.group_send(f'game_{game_id}', {
             'type': 'GAME_START',
             'game_id': game_id,
@@ -1144,7 +1144,6 @@ class AdminConsumer(BaseConsumer):
             'config': config_data,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
-        # Also send to all_games group
         await self.channel_layer.group_send('all_games', {
             'type': 'GAME_START',
             'game_id': game_id,
