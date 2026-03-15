@@ -576,6 +576,31 @@ class ClientConsumer(BaseConsumer):
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
 
+    # Also handle uppercase versions (for group_send with uppercase type)
+    async def GAME_START(self, event: dict):
+        """Handle GAME_START from group."""
+        await self.game_start(event)
+    
+    async def GAME_COUNTDOWN(self, event: dict):
+        """Handle GAME_COUNTDOWN from group."""
+        await self.game_countdown(event)
+    
+    async def GAME_END(self, event: dict):
+        """Handle GAME_END from group."""
+        await self.game_end(event)
+    
+    async def GAME_STOP(self, event: dict):
+        """Handle GAME_STOP from group."""
+        await self.game_stop(event)
+    
+    async def HIT_EVENT(self, event: dict):
+        """Handle HIT_EVENT from group."""
+        await self.hit_event(event)
+    
+    async def LANE_STATUS(self, event: dict):
+        """Handle LANE_STATUS from group."""
+        await self.lane_status(event)
+
 
 class AdminConsumer(BaseConsumer):
     """
