@@ -293,13 +293,13 @@ class DeviceConsumer(BaseConsumer):
         except Device.DoesNotExist:
             pass
     
-    @database_sync_to_async
-    def process_hit(self, device, lane, position: str, accuracy: float, raw_strength: int, event_timestamp: str):
-        from shooting_range.games.models import Game, GameStatus, HitEvent, LaneScore
+    async def process_hit(self, device, lane, position: str, accuracy: float, raw_strength: int, event_timestamp: str):
+        from shooting_range.games.models import Game, GameStatus, HitEvent
         from shooting_range.lanes.models import LaneScore as LaneScoreModel
+        from asgiref.sync import sync_to_async
         
         # Find active game for this lane
-        game = Game.objects.filter(
+        game = await sync_to_async(Game.objects.filter)(
             status=GameStatus.ACTIVE,
             active_lanes=lane
         ).first()
@@ -327,7 +327,7 @@ class DeviceConsumer(BaseConsumer):
         except:
             event_time = timezone.now()
         
-        HitEvent.objects.create(
+        await sync_to_async(HitEvent.objects.create)(
             game=game,
             lane=lane,
             position=position,
@@ -338,7 +338,7 @@ class DeviceConsumer(BaseConsumer):
         )
         
         # Update lane score
-        lane_score, _ = LaneScoreModel.objects.get_or_create(
+        lane_score, _ = await sync_to_async(LaneScoreModel.objects.get_or_create)(
             lane=lane,
             game=game,
             defaults={'score': 0, 'hit_count': 0}
@@ -346,7 +346,7 @@ class DeviceConsumer(BaseConsumer):
         lane_score.score += score
         lane_score.hit_count += 1
         lane_score.last_hit_at = timezone.now()
-        lane_score.save()
+        await sync_to_async(lane_score.save)()
         
         result = {'score': score, 'game_id': str(game.game_id)}
         
@@ -370,19 +370,26 @@ class DeviceConsumer(BaseConsumer):
         
         # Check for win condition
         if game.use_win_score and lane_score.score >= game.win_score:
+            final_scores = await self.get_game_scores(game)
             await self.channel_layer.group_send(f"game_{game.game_id}", {
                 'type': 'GAME_END',
                 'winner_lane': lane.lane_number,
-                'final_scores': await self.get_game_scores(game)
+                'final_scores': final_scores
             })
-            game.end()
+            await sync_to_async(game.end)()
         
         return result
     
-    @database_sync_to_async
-    def get_game_scores(self, game):
+    async def get_game_scores(self, game):
+        from asgiref.sync import sync_to_async
         scores = []
-        for ls in game.lane_scores.select_related('lane').all():
+        
+        @sync_to_async
+        def get_scores():
+            return list(game.lane_scores.select_related('lane').all())
+        
+        lane_scores = await get_scores()
+        for ls in lane_scores:
             scores.append({
                 'lane': ls.lane.lane_number,
                 'score': ls.score,
@@ -602,21 +609,7 @@ class AdminConsumer(BaseConsumer):
     
     async def start_game(self, data: dict):
         """Start a new game."""
-        game_id = await self.create_game(data)
-        
-        if game_id:
-            # Broadcast game start
-            await self.channel_layer.group_send('admin', {
-                'type': 'GAME_START',
-                'game_id': game_id,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-            
-            await self.send_message({
-                'type': 'GAME_STARTED',
-                'game_id': game_id,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
+        await self._start_game_flow(data)
     
     async def stop_game(self, data: dict):
         """Stop the current game."""
@@ -699,33 +692,63 @@ class AdminConsumer(BaseConsumer):
             # All enabled lanes
             game.active_lanes.set(Lane.objects.filter(is_enabled=True))
         
-        # Broadcast countdown
+        # Return game_id - countdown will be handled by caller
+        return game_id
+    
+    async def _run_countdown(self, game_id: str, countdown_seconds: int):
+        """Run countdown and start game."""
         import asyncio
-        async def broadcast_countdown():
-            for i in range(game.countdown_seconds, 0, -1):
-                await self.channel_layer.group_send(f'game_{game_id}', {
-                    'type': 'GAME_COUNTDOWN',
-                    'count': i,
-                    'timestamp': datetime.utcnow().isoformat() + 'Z'
-                })
-                await asyncio.sleep(1)
-            
-            # Start game
+        from shooting_range.games.models import Game, GameStatus
+        from asgiref.sync import sync_to_async
+        
+        for i in range(countdown_seconds, 0, -1):
+            await self.channel_layer.group_send(f'game_{game_id}', {
+                'type': 'GAME_COUNTDOWN',
+                'count': i,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            await asyncio.sleep(1)
+        
+        # Update game status to active
+        @sync_to_async
+        def activate_game():
+            game = Game.objects.get(game_id=game_id)
             game.status = GameStatus.ACTIVE
             game.started_at = timezone.now()
             game.save()
+        
+        await activate_game()
+        
+        await self.channel_layer.group_send(f'game_{game_id}', {
+            'type': 'GAME_START',
+            'game_id': game_id,
+            'duration': 60,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+    
+    async def _start_game_flow(self, data: dict):
+        """Start game with countdown."""
+        import asyncio
+        game_id = await self.create_game(data)
+        
+        if game_id:
+            countdown = data.get('countdown', 3)
             
-            await self.channel_layer.group_send(f'game_{game_id}', {
+            # Broadcast game start
+            await self.channel_layer.group_send('admin', {
                 'type': 'GAME_START',
                 'game_id': game_id,
-                'duration': game.duration,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
-        
-        # Run countdown (fire and forget for now)
-        asyncio.create_task(broadcast_countdown())
-        
-        return game_id
+            
+            await self.send_message({
+                'type': 'GAME_STARTED',
+                'game_id': game_id,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            
+            # Run countdown in background
+            asyncio.create_task(self._run_countdown(game_id, countdown))
     
     @database_sync_to_async
     def end_game(self, game_id: str):
