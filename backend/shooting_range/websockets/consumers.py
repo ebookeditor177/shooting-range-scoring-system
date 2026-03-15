@@ -725,6 +725,22 @@ class AdminConsumer(BaseConsumer):
         })
     
     @database_sync_to_async
+    def get_game_scores_by_id(self, game_id: str):
+        from shooting_range.games.models import Game
+        scores = []
+        try:
+            game = Game.objects.get(game_id=game_id)
+            for ls in game.lane_scores.select_related('lane').all():
+                scores.append({
+                    'lane': ls.lane.lane_number,
+                    'score': ls.score,
+                    'hit_count': ls.hit_count
+                })
+        except Game.DoesNotExist:
+            pass
+        return scores
+    
+    @database_sync_to_async
     def create_game(self, data: dict) -> str:
         import uuid
         from shooting_range.games.models import Game, GameConfiguration, GameMode, GameStatus
