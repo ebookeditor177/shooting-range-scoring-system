@@ -420,7 +420,14 @@ class ClientConsumer(BaseConsumer):
     async def connect(self):
         await super().connect()
         self.subscribed_lanes: list = []
-        self.client_id = None
+        self.client_id = f"client_{id(self)}"
+        
+        # Auto-authenticate for simplicity
+        await self.send_message({
+            'type': 'AUTHENTICATED',
+            'client_id': self.client_id,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
     
     async def disconnect(self, close_code):
         await super().disconnect(close_code)
@@ -637,6 +644,15 @@ class AdminConsumer(BaseConsumer):
     async def connect(self):
         await super().connect()
         await self.join_group('admin')
+        
+        # Auto-authenticate and send status
+        await self.send_message({
+            'type': 'AUTHENTICATED',
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+        
+        # Send current system status
+        await self.send_status()
     
     async def handle_admin_command(self, data: dict):
         """Handle admin commands."""
