@@ -24,7 +24,8 @@ function handleMessage(msg: WebSocketMessage) {
   switch (msg.type) {
     case 'AUTHENTICATED':
       isConnected.value = true
-      sendMessage({ type: 'get_status' })
+      // Request status using correct message type
+      sendMessage({ type: 'request_status' })
       break
 
     case 'SYSTEM_STATUS':
