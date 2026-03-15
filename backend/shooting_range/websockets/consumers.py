@@ -396,10 +396,21 @@ class DeviceConsumer(BaseConsumer):
                 defaults={'score': 0, 'hit_count': 0}
             )
             
+            # Get current hits_by_position
+            hits_by_position = lane_score.hits_by_position or {}
+            if not isinstance(hits_by_position, dict):
+                hits_by_position = {}
+            
+            # Update position count
+            if position not in hits_by_position:
+                hits_by_position[position] = 0
+            hits_by_position[position] = hits_by_position.get(position, 0) + 1
+            
             # Update score
             lane_score.score += score
             lane_score.hit_count += 1
             lane_score.last_hit_at = timezone.now()
+            lane_score.hits_by_position = hits_by_position
             lane_score.save()
             
             # Create hit event
@@ -422,7 +433,8 @@ class DeviceConsumer(BaseConsumer):
                 'score': score,
                 'game_id': str(game.game_id),
                 'hit_count': lane_score.hit_count,
-                'total_score': lane_score.score
+                'total_score': lane_score.score,
+                'hits_by_position': hits_by_position
             }
             
             return result
@@ -439,6 +451,7 @@ class DeviceConsumer(BaseConsumer):
                 'score': result['score'],
                 'total_score': result['total_score'],
                 'hit_count': result['hit_count'],
+                'hits_by_position': result.get('hits_by_position', {}),
                 'timestamp': event_timestamp
             }
             
@@ -469,37 +482,49 @@ class DeviceConsumer(BaseConsumer):
                 
                 # Check if win score is enabled
                 win_score = getattr(settings, 'DEFAULT_WIN_SCORE', 1000)
-                use_win_score = True  # Default to True
+                use_win_score = getattr(settings, 'USE_WIN_SCORE', True)
                 
+                # In individual mode, multiple winners are allowed
                 if use_win_score and score >= win_score:
                     # Get the lane object
                     lane = Lane.objects.filter(lane_number=lane_number).first()
-                    game.status = GameStatus.ENDED
-                    game.ended_at = timezone.now()
-                    if lane:
+                    
+                    # For individual mode, we set winner but don't end game yet
+                    # The game will end when time is up or admin stops it
+                    if game.mode == 'individual':
+                        # In individual mode, each lane that reaches win score wins
+                        # Set this lane as a winner (could be multiple)
                         game.winner_lane = lane
-                    game.save()
-                    return lane_number
-                return None
+                        game.save()
+                        return [lane_number]  # Return list of winners
+                    else:
+                        # In all-lanes mode, first to reach win score wins
+                        game.status = GameStatus.ENDED
+                        game.ended_at = timezone.now()
+                        if lane:
+                            game.winner_lane = lane
+                        game.save()
+                        return [lane_number]
+                return []
             except Game.DoesNotExist:
-                return None
+                return []
         
-        winner = await check_and_end()
+        winners = await check_and_end()
         
-        if winner:
+        if winners:
             # Get final scores
             final_scores = await self.get_game_scores_by_id(game_id)
             
-            # Broadcast game end immediately
+            # Broadcast game end
             await self.channel_layer.group_send(f'game_{game_id}', {
                 'type': 'GAME_END',
-                'winner_lane': winner,
+                'winner_lane': winners,  # Now can be a list
                 'final_scores': final_scores,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             await self.channel_layer.group_send('all_games', {
                 'type': 'GAME_END',
-                'winner_lane': winner,
+                'winner_lane': winners,
                 'final_scores': final_scores,
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
@@ -1101,11 +1126,22 @@ class AdminConsumer(BaseConsumer):
         
         await activate_game()
         
+        # Get config to send with game start
+        config = game.configuration if game else None
+        config_data = {}
+        if config:
+            config_data = {
+                'primary_color': config.primary_color or '#00ff00',
+                'win_score': config.win_score or 1000,
+                'use_win_score': config.use_win_score,
+            }
+        
         # Send to game-specific group
         await self.channel_layer.group_send(f'game_{game_id}', {
             'type': 'GAME_START',
             'game_id': game_id,
             'duration': game_duration,
+            'config': config_data,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
         # Also send to all_games group
@@ -1113,6 +1149,7 @@ class AdminConsumer(BaseConsumer):
             'type': 'GAME_START',
             'game_id': game_id,
             'duration': game_duration,
+            'config': config_data,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
     

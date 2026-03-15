@@ -58,6 +58,8 @@ export const useGameStore = defineStore('game', () => {
     logoUrl: '',
     enableSound: true,
     enableVisualEffects: true,
+    winScore: 1000,
+    useWinScore: true,
     sensorPoints: {
       head: 100,
       chest: 50,
@@ -167,7 +169,7 @@ export const useGameStore = defineStore('game', () => {
     countdownValue.value = 0
   }
 
-  function endGame(winnerLane: number | null, finalScores: Score[]) {
+  function endGame(winnerLane: number | number[] | null, finalScores: Score[]) {
     gameState.value.status = 'ended'
     gameState.value.winner_lane = winnerLane
     setAllScores(finalScores)
