@@ -28,6 +28,12 @@ const startTimer = () => {
   timerInterval = window.setInterval(() => {
     if (store.gameState.remaining_time > 0) {
       store.updateRemainingTime(store.gameState.remaining_time - 1)
+    } else {
+      // Timer reached zero - end game locally as backup
+      stopTimer()
+      if (store.gameState.status === 'active') {
+        store.endGame(null, [])
+      }
     }
   }, 1000)
 }
@@ -48,14 +54,20 @@ function handleMessage(msg: WebSocketMessage) {
       store.setLaneStatus(msg)
       break
       
-    case 'GAME_COUNTDOWN':
-      store.setCountdown(msg.count)
+    case 'GAME_STARTED':
+      if (msg.countdown) store.setCountdown(msg.countdown)
+      store.startGame(msg.game_id, msg.duration || 60)
+      store.setCountdown(0)
+      // Start local timer as backup
+      startTimer()
       break
       
     case 'GAME_START':
       store.startGame(msg.game_id, msg.duration)
       store.setCountdown(0)
-      // Update config from game start (convert snake_case to camelCase)
+      // Start local timer as backup
+      startTimer()
+      // Update config from game start
       if (msg.config) {
         store.setConfig({
           primaryColor: msg.config.primary_color || '#00ff00',
@@ -65,18 +77,39 @@ function handleMessage(msg: WebSocketMessage) {
       }
       break
       
+    case 'GAME_COUNTDOWN':
+      store.setCountdown(msg.count)
+      break
+      
+    case 'GAME_START':
     case 'GAME_STARTED':
+      // Handle both GAME_START and GAME_STARTED messages
       if (msg.countdown) store.setCountdown(msg.countdown)
       store.startGame(msg.game_id, msg.duration || 60)
       store.setCountdown(0)
+      // Start timer as backup
+      startTimer()
+      // Update config
+      if (msg.config) {
+        store.setConfig({
+          primaryColor: msg.config.primary_color || '#00ff00',
+          winScore: msg.config.win_score || 1000,
+          useWinScore: msg.config.use_win_score !== false
+        })
+      }
       break
       
     case 'GAME_STOP':
+      stopTimer()
       store.setGameState({ status: 'idle' })
       store.setCountdown(0)
       break
       
     case 'GAME_END':
+      console.log('GAME_END received:', msg)
+      // Stop the timer
+      stopTimer()
+      // End the game
       store.endGame(msg.winner_lane, msg.final_scores || [])
       store.setCountdown(0)
       break
