@@ -497,8 +497,8 @@ class DeviceConsumer(BaseConsumer):
                 win_score = config.win_score if config else 1000
                 use_win_score = game.use_win_score if config else True
                 
-                # Get all lane scores for this game
-                lane_scores = LaneScore.objects.filter(game=game).select_related('lane')
+                # Get all lane scores for this game - convert to list
+                lane_scores = list(LaneScore.objects.filter(game=game).select_related('lane'))
                 
                 # In individual mode, find ALL lanes that reached win score
                 winners = []
@@ -1326,7 +1326,8 @@ class AdminConsumer(BaseConsumer):
                 win_score = config.win_score if config else 1000
                 use_win_score = game.use_win_score if config else True
                 
-                lane_scores = LaneScore.objects.filter(game=game).select_related('lane')
+                # Convert to list to avoid queryset truthiness issues
+                lane_scores = list(LaneScore.objects.filter(game=game).select_related('lane'))
                 
                 # Get all winners (lanes with score >= win_score)
                 winners = []
@@ -1339,15 +1340,14 @@ class AdminConsumer(BaseConsumer):
                                 winners.append(ls.lane.lane_number)
                     else:
                         # In all-lanes mode, highest score wins
-                        highest = lane_scores.order_by('-score').first()
-                        if highest:
+                        if lane_scores:
+                            highest = max(lane_scores, key=lambda ls: ls.score)
                             winners = [highest.lane.lane_number]
                 
                 # If no one reached win_score in individual mode, highest score still wins
                 if not winners and lane_scores:
-                    highest = lane_scores.order_by('-score').first()
-                    if highest:
-                        winners = [highest.lane.lane_number]
+                    highest = max(lane_scores, key=lambda ls: ls.score)
+                    winners = [highest.lane.lane_number]
                 
                 game.status = GameStatus.ENDED
                 game.ended_at = timezone.now()
