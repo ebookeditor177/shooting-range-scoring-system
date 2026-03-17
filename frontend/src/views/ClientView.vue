@@ -54,33 +54,6 @@ function handleMessage(msg: WebSocketMessage) {
       store.setLaneStatus(msg)
       break
       
-    case 'GAME_STARTED':
-      if (msg.countdown) store.setCountdown(msg.countdown)
-      store.startGame(msg.game_id, msg.duration || 60)
-      store.setCountdown(0)
-      // Start local timer as backup
-      startTimer()
-      break
-      
-    case 'GAME_START':
-      store.startGame(msg.game_id, msg.duration)
-      store.setCountdown(0)
-      // Start local timer as backup
-      startTimer()
-      // Update config from game start
-      if (msg.config) {
-        store.setConfig({
-          primaryColor: msg.config.primary_color || '#00ff00',
-          winScore: msg.config.win_score || 1000,
-          useWinScore: msg.config.use_win_score !== false
-        })
-      }
-      break
-      
-    case 'GAME_COUNTDOWN':
-      store.setCountdown(msg.count)
-      break
-      
     case 'GAME_START':
     case 'GAME_STARTED':
       // Handle both GAME_START and GAME_STARTED messages
@@ -97,6 +70,10 @@ function handleMessage(msg: WebSocketMessage) {
           useWinScore: msg.config.use_win_score !== false
         })
       }
+      break
+      
+    case 'GAME_COUNTDOWN':
+      store.setCountdown(msg.count)
       break
       
     case 'GAME_STOP':
