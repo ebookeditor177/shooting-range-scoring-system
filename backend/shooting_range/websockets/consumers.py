@@ -243,7 +243,16 @@ class DeviceConsumer(BaseConsumer):
         
         # Get position and calculate score
         position = data.get('position', 'unknown')
-        accuracy = float(data.get('accuracy', 0.0))
+        
+        # Validate accuracy - must be a valid number between 0 and 1
+        try:
+            accuracy = float(data.get('accuracy', 0.0))
+            if accuracy != accuracy:  # Check for NaN
+                accuracy = 0.0
+            accuracy = max(0.0, min(1.0, accuracy))  # Clamp between 0 and 1
+        except (TypeError, ValueError):
+            accuracy = 0.0
+        
         raw_strength = int(data.get('raw_strength', 0))
         event_timestamp = data.get('event_timestamp')
         
