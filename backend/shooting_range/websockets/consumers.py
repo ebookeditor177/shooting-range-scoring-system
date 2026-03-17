@@ -577,12 +577,9 @@ class DeviceConsumer(BaseConsumer):
             game = Game.objects.get(game_id=game_id)
             for ls in game.lane_scores.select_related('lane').all():
                 lane_num = ls.lane.lane_number
-                hits_by_position = dict(
-                    HitEvent.objects.filter(game=game, lane=ls.lane)
-                    .values('position')
-                    .annotate(count=Count('id'))
-                    .values_list('position', 'count')
-                )
+                # Get hits by position - use dict comprehension for reliability
+                hit_counts = HitEvent.objects.filter(game=game, lane=ls.lane).values('position').annotate(count=Count('id'))
+                hits_by_position = {item['position']: item['count'] for item in hit_counts}
                 scores.append({
                     'lane': lane_num,
                     'score': ls.score,
@@ -1062,12 +1059,9 @@ class AdminConsumer(BaseConsumer):
             game = Game.objects.get(game_id=game_id)
             for ls in game.lane_scores.select_related('lane').all():
                 lane_num = ls.lane.lane_number
-                hits_by_position = dict(
-                    HitEvent.objects.filter(game=game, lane=ls.lane)
-                    .values('position')
-                    .annotate(count=Count('id'))
-                    .values_list('position', 'count')
-                )
+                # Get hits by position - use dict comprehension for reliability
+                hit_counts = HitEvent.objects.filter(game=game, lane=ls.lane).values('position').annotate(count=Count('id'))
+                hits_by_position = {item['position']: item['count'] for item in hit_counts}
                 scores.append({
                     'lane': lane_num,
                     'score': ls.score,
@@ -1080,7 +1074,7 @@ class AdminConsumer(BaseConsumer):
     
     async def broadcast_score_update(self, game_id: str):
         """Broadcast SCORE_UPDATE to all clients."""
-        scores = self.get_game_scores_by_id(game_id)
+        scores = await self.get_game_scores_by_id(game_id)
         score_message = {
             'type': 'SCORE_UPDATE',
             'game_id': game_id,
