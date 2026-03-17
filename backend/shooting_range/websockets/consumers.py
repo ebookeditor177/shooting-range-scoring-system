@@ -462,8 +462,8 @@ class DeviceConsumer(BaseConsumer):
             # Send to game_broadcast group (all connected clients)
             await self.channel_layer.group_send("game_broadcast", hit_message)
             
-            # Broadcast score update after hit
-            await self.broadcast_score_update(result['game_id'])
+            # Note: Score updates are now handled via HIT_EVENT broadcasts and GAME_END
+            # The broadcast_score_update call removed as it's redundant
         
         # Check if any lane reached win score - end game early if so
         if result['game_id']:
