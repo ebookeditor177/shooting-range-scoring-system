@@ -247,11 +247,11 @@ watch(() => store.recentHits.length, (newLen, oldLen) => {
             <div class="stat-lbl">CHEST</div>
           </div>
           <div class="stat-card">
-            <div class="stat-val">{{ store.hitsByPosition(laneNumber).stomach }}</div>
+            <div class="stat-val">{{ store.hitsByPosition(laneNumber).stomach || 0 }}</div>
             <div class="stat-lbl">STOMACH</div>
           </div>
           <div class="stat-card">
-            <div class="stat-val">{{ store.hitsByPosition(laneNumber).left_leg + store.hitsByPosition(laneNumber).right_leg }}</div>
+            <div class="stat-val">{{ (store.hitsByPosition(laneNumber).left_leg || 0) + (store.hitsByPosition(laneNumber).right_leg || 0) }}</div>
             <div class="stat-lbl">LEGS</div>
           </div>
         </div>
@@ -294,19 +294,19 @@ watch(() => store.recentHits.length, (newLen, oldLen) => {
         <div class="breakdown">
           <div class="break-row">
             <span class="break-lbl">HEAD</span>
-            <span class="break-val">{{ store.hitsByPosition(laneNumber).head }}</span>
+            <span class="break-val">{{ store.hitsByPosition(laneNumber).head || 0 }}</span>
           </div>
           <div class="break-row">
             <span class="break-lbl">CHEST</span>
-            <span class="break-val">{{ store.hitsByPosition(laneNumber).chest }}</span>
+            <span class="break-val">{{ store.hitsByPosition(laneNumber).chest || 0 }}</span>
           </div>
           <div class="break-row">
             <span class="break-lbl">STOMACH</span>
-            <span class="break-val">{{ store.hitsByPosition(laneNumber).stomach }}</span>
+            <span class="break-val">{{ store.hitsByPosition(laneNumber).stomach || 0 }}</span>
           </div>
           <div class="break-row">
             <span class="break-lbl">LEGS</span>
-            <span class="break-val">{{ store.hitsByPosition(laneNumber).left_leg + store.hitsByPosition(laneNumber).right_leg }}</span>
+            <span class="break-val">{{ (store.hitsByPosition(laneNumber).left_leg || 0) + (store.hitsByPosition(laneNumber).right_leg || 0) }}</span>
           </div>
         </div>
       </div>
