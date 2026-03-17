@@ -570,7 +570,7 @@ class DeviceConsumer(BaseConsumer):
     @database_sync_to_async
     def get_game_scores_by_id(self, game_id: str):
         from shooting_range.games.models import Game
-        from shooting_range.hits.models import HitEvent
+        from shooting_range.games.models import HitEvent
         from django.db.models import Count
         scores = []
         try:
@@ -1064,7 +1064,7 @@ class AdminConsumer(BaseConsumer):
     @database_sync_to_async
     def get_game_scores_by_id(self, game_id: str):
         from shooting_range.games.models import Game
-        from shooting_range.hits.models import HitEvent
+        from shooting_range.games.models import HitEvent
         from django.db.models import Count
         scores = []
         try:
