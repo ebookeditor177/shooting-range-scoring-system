@@ -875,6 +875,18 @@ class ClientConsumer(BaseConsumer):
         """Handle LANE_STATUS from group."""
         await self.lane_status(event)
 
+    async def broadcast_score_update(self, game_id: str):
+        """Broadcast SCORE_UPDATE to all clients."""
+        scores = await self.get_game_scores_by_id(game_id)
+        score_message = {
+            'type': 'SCORE_UPDATE',
+            'game_id': game_id,
+            'scores': scores,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+        await self.channel_layer.group_send(f'game_{game_id}', score_message)
+        await self.channel_layer.group_send('game_broadcast', score_message)
+
 
 class AdminConsumer(BaseConsumer):
     """
@@ -1292,6 +1304,7 @@ class AdminConsumer(BaseConsumer):
         
         # Check if game is still active
         from shooting_range.games.models import Game, GameStatus
+        from shooting_range.lanes.models import LaneScore
         from asgiref.sync import sync_to_async
         
         @sync_to_async
