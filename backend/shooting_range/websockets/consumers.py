@@ -461,6 +461,9 @@ class DeviceConsumer(BaseConsumer):
             
             # Send to game_broadcast group (all connected clients)
             await self.channel_layer.group_send("game_broadcast", hit_message)
+            
+            # Broadcast score update after hit
+            await self.broadcast_score_update(result['game_id'])
         
         # Check if any lane reached win score - end game early if so
         if result['game_id']:
@@ -1052,18 +1055,40 @@ class AdminConsumer(BaseConsumer):
     @database_sync_to_async
     def get_game_scores_by_id(self, game_id: str):
         from shooting_range.games.models import Game
+        from shooting_range.hits.models import HitEvent
+        from django.db.models import Count
         scores = []
         try:
             game = Game.objects.get(game_id=game_id)
             for ls in game.lane_scores.select_related('lane').all():
+                lane_num = ls.lane.lane_number
+                hits_by_position = dict(
+                    HitEvent.objects.filter(game=game, lane=ls.lane)
+                    .values('position')
+                    .annotate(count=Count('id'))
+                    .values_list('position', 'count')
+                )
                 scores.append({
-                    'lane': ls.lane.lane_number,
+                    'lane': lane_num,
                     'score': ls.score,
-                    'hit_count': ls.hit_count
+                    'hit_count': ls.hit_count,
+                    'hits_by_position': hits_by_position
                 })
         except Game.DoesNotExist:
             pass
         return scores
+    
+    async def broadcast_score_update(self, game_id: str):
+        """Broadcast SCORE_UPDATE to all clients."""
+        scores = self.get_game_scores_by_id(game_id)
+        score_message = {
+            'type': 'SCORE_UPDATE',
+            'game_id': game_id,
+            'scores': scores,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+        await self.channel_layer.group_send(f'game_{game_id}', score_message)
+        await self.channel_layer.group_send('game_broadcast', score_message)
     
     @database_sync_to_async
     def create_game(self, data: dict) -> str:

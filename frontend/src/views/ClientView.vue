@@ -105,7 +105,13 @@ function handleMessage(msg: WebSocketMessage) {
       break
       
     case 'SCORE_UPDATE':
-      store.setScore(msg)
+      // Handle SCORE_UPDATE with scores array
+      if (msg.scores && Array.isArray(msg.scores)) {
+        store.setAllScores(msg.scores)
+      } else {
+        // Fallback to single score
+        store.setScore(msg)
+      }
       break
       
     case 'CONFIG_UPDATE':
