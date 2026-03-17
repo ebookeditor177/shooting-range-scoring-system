@@ -1065,7 +1065,7 @@ class AdminConsumer(BaseConsumer):
         # Return game_id - countdown will be handled by caller
         return game_id
     
-    async def _run_countdown(self, game_id: str, countdown_seconds: int):
+    async def _run_countdown(self, game_id: str, countdown_seconds: int, duration: int):
         """Run countdown and start game."""
         import asyncio
         from shooting_range.games.models import Game, GameStatus
@@ -1163,6 +1163,10 @@ class AdminConsumer(BaseConsumer):
             'config': config_data,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         })
+        
+        # NOW start timer and game end - after countdown completes
+        asyncio.create_task(self._schedule_game_end(game_id, duration))
+        asyncio.create_task(self._broadcast_timer(game_id, duration))
     
     async def _start_game_flow(self, data: dict):
         """Start game with countdown."""
@@ -1179,16 +1183,10 @@ class AdminConsumer(BaseConsumer):
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
             
-            # Run countdown in background
+            # Run countdown in background - timer will start after countdown ends
             import asyncio
             # Use create_task instead of ensure_future for background tasks
-            asyncio.create_task(self._run_countdown(game_id, countdown))
-            
-            # Schedule game end after duration
-            asyncio.create_task(self._schedule_game_end(game_id, duration))
-            
-            # Also start timer broadcast task to keep clients in sync
-            asyncio.create_task(self._broadcast_timer(game_id, duration))
+            asyncio.create_task(self._run_countdown(game_id, countdown, duration))
     
     async def _broadcast_timer(self, game_id: str, duration: int):
         """Broadcast timer updates every second to keep clients in sync."""
