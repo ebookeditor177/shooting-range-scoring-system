@@ -82,10 +82,16 @@ function handleMessage(msg: WebSocketMessage) {
       break
       
     case 'HIT_EVENT':
+      // Show hits for this lane only
       if (msg.lane === laneNumber.value) {
         store.addHit(msg as any)
         store.setScore(msg as any)
       }
+      break
+    
+    case 'TIMER_UPDATE':
+      // Update timer from server
+      store.updateRemainingTime(msg.remaining_time)
       break
       
     case 'SCORE_UPDATE':
@@ -169,6 +175,7 @@ watch(() => store.recentHits.length, (newLen, oldLen) => {
           <TargetSVG 
             :primary-color="store.config.primaryColor"
             :hit-effects="store.config.enableVisualEffects"
+            :lane-number="laneNumber"
           />
         </div>
         

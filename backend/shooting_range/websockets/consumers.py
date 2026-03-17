@@ -1222,6 +1222,39 @@ class AdminConsumer(BaseConsumer):
             
             # Schedule game end after duration
             asyncio.create_task(self._schedule_game_end(game_id, duration))
+            
+            # Also start timer broadcast task to keep clients in sync
+            asyncio.create_task(self._broadcast_timer(game_id, duration))
+    
+    async def _broadcast_timer(self, game_id: str, duration: int):
+        """Broadcast timer updates every second to keep clients in sync."""
+        import asyncio
+        
+        for remaining in range(duration - 1, -1, -1):
+            # Check if game is still active
+            from shooting_range.games.models import Game, GameStatus
+            from asgiref.sync import sync_to_async
+            
+            @sync_to_async
+            def check_active():
+                try:
+                    game = Game.objects.get(game_id=game_id)
+                    return game.status == GameStatus.ACTIVE
+                except:
+                    return False
+            
+            is_active = await check_active()
+            if not is_active:
+                break
+            
+            # Broadcast timer update
+            await self.channel_layer.group_send('game_broadcast', {
+                'type': 'TIMER_UPDATE',
+                'remaining_time': remaining,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
+            
+            await asyncio.sleep(1)
     
     async def _schedule_game_end(self, game_id: str, duration: int):
         """Schedule game to end after duration."""

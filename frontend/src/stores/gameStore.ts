@@ -107,7 +107,21 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function setScore(score: Score) {
-    scores.value.set(score.lane, score)
+    // Preserve existing hits_by_position if not provided
+    const existing = scores.value.get(score.lane)
+    const newScore = {
+      lane: score.lane,
+      score: score.score,
+      hit_count: score.hit_count,
+      hits_by_position: score.hits_by_position || existing?.hits_by_position || {
+        head: 0,
+        chest: 0,
+        stomach: 0,
+        left_leg: 0,
+        right_leg: 0
+      }
+    }
+    scores.value.set(score.lane, newScore)
   }
 
   function setAllScores(scoreList: Score[]) {
