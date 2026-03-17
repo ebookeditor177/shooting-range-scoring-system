@@ -462,13 +462,7 @@ class DeviceConsumer(BaseConsumer):
                 'timestamp': event_timestamp
             }
             
-            # Send to lane group
-            await self.channel_layer.group_send(f"lane_{lane.lane_number}", hit_message)
-            
-            # Send to game group
-            await self.channel_layer.group_send(f"game_{result['game_id']}", hit_message)
-            
-            # Send to game_broadcast group (all connected clients)
+            # Send to game_broadcast group (all connected clients) - single broadcast
             await self.channel_layer.group_send("game_broadcast", hit_message)
             
             # Note: Score updates are now handled via HIT_EVENT broadcasts and GAME_END
