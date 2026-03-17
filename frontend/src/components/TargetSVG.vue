@@ -14,13 +14,14 @@ const store = useGameStore()
 // Get the lane number - from props or from game state
 const currentLane = computed(() => props.laneNumber || store.gameState.game_id as any)
 
-// Sensor positions on the target silhouette (percentage-based)
+// Human body proportions (realistic silhouette)
+// Using standard anatomical proportions: head is ~1/7 to 1/8 of total height
 const sensorZones = [
-  { id: 'head', cx: 50, cy: 10, r: 10, label: 'HEAD', points: 100 },
-  { id: 'chest', cx: 50, cy: 32, r: 14, label: 'CHEST', points: 50 },
-  { id: 'stomach', cx: 50, cy: 52, r: 10, label: 'STOMACH', points: 30 },
-  { id: 'left_leg', cx: 38, cy: 78, r: 6, label: 'L LEG', points: 20 },
-  { id: 'right_leg', cx: 62, cy: 78, r: 6, label: 'R LEG', points: 20 }
+  { id: 'head', cx: 50, cy: 8, r: 7, label: 'HEAD', points: 100 },
+  { id: 'chest', cx: 50, cy: 30, r: 12, label: 'CHEST', points: 50 },
+  { id: 'stomach', cx: 50, cy: 50, r: 9, label: 'STOMACH', points: 30 },
+  { id: 'left_leg', cx: 40, cy: 78, r: 5, label: 'L LEG', points: 20 },
+  { id: 'right_leg', cx: 60, cy: 78, r: 5, label: 'R LEG', points: 20 }
 ]
 
 // Hit markers to display
@@ -61,7 +62,7 @@ function addHitMarker(hit: HitEvent) {
   if (!zone) return
 
   // Add some randomness to hit position within the zone
-  const randomOffset = () => (Math.random() - 0.5) * zone.r * 0.6
+  const randomOffset = () => (Math.random() - 0.5) * zone.r * 0.7
   const x = zone.cx + randomOffset()
   const y = zone.cy + randomOffset()
 
@@ -95,130 +96,273 @@ const primaryColor = computed(() => props.primaryColor || store.config.primaryCo
 </script>
 
 <template>
-  <div class="target-container" :class="{ 'flash-active': isFlashing }">
-    <svg viewBox="0 0 100 100" class="target-svg">
-      <!-- Definitions -->
-      <defs>
-        <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" :style="`stop-color:${primaryColor};stop-opacity:0.3`" />
-          <stop offset="50%" :style="`stop-color:${primaryColor};stop-opacity:0.15`" />
-          <stop offset="100%" :style="`stop-color:${primaryColor};stop-opacity:0.05`" />
-        </linearGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-          <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
-        <filter id="shadow">
-          <feDropShadow dx="0" dy="0" stdDeviation="2" :flood-color="primaryColor" flood-opacity="0.5"/>
-        </filter>
-      </defs>
+  <div class="target-wrapper">
+    <div class="target-container" :class="{ 'flash-active': isFlashing }">
+      <svg viewBox="0 0 100 120" class="target-svg">
+        <!-- Definitions -->
+        <defs>
+          <linearGradient id="skinGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" :style="`stop-color:${primaryColor};stop-opacity:0.15`" />
+            <stop offset="50%" :style="`stop-color:${primaryColor};stop-opacity:0.25`" />
+            <stop offset="100%" :style="`stop-color:${primaryColor};stop-opacity:0.15`" />
+          </linearGradient>
+          <linearGradient id="muscleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" :style="`stop-color:${primaryColor};stop-opacity:0.3`" />
+            <stop offset="100%" :style="`stop-color:${primaryColor};stop-opacity:0.1`" />
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <filter id="softGlow">
+            <feGaussianBlur stdDeviation="0.5" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
 
-      <!-- Background silhouette - outer glow -->
-      <path
-        d="M50 3 
-           C60 3 68 8 70 16
-           C72 22 72 28 70 34
-           C72 38 73 42 72 46
-           L76 52 L73 65 L70 80
-           L66 92 L58 98 L52 98 L46 98 L38 92 L34 80 L31 65 L28 52 L32 46
-           C31 42 32 38 34 34
-           C32 28 32 22 34 16
-           C36 8 44 3 50 3 Z"
-        :fill="primaryColor"
-        fill-opacity="0.1"
-        :stroke="primaryColor"
-        stroke-width="0.3"
-      />
-
-      <!-- Main body silhouette -->
-      <path
-        d="M50 5 
-           C58 5 66 10 68 18
-           C70 24 70 30 68 36
-           C70 40 71 44 70 48
-           L74 54 L71 66 L68 80
-           L64 90 L56 96 L52 96 L48 96 L40 90 L36 80 L33 66 L30 54 L34 48
-           C33 44 34 40 36 36
-           C34 30 34 24 36 18
-           C38 10 46 5 50 5 Z"
-        fill="url(#bodyGrad)"
-        :stroke="primaryColor"
-        stroke-width="0.6"
-        filter="url(#glow)"
-      />
-
-      <!-- Head circle -->
-      <circle
-        cx="50"
-        cy="12"
-        r="8"
-        fill="url(#bodyGrad)"
-        :stroke="primaryColor"
-        stroke-width="0.5"
-        filter="url(#glow)"
-      />
-
-      <!-- Sensor zone circles -->
-      <circle
-        v-for="zone in sensorZones"
-        :key="zone.id"
-        :cx="zone.cx"
-        :cy="zone.cy"
-        :r="zone.r"
-        fill="none"
-        :stroke="primaryColor"
-        stroke-width="0.4"
-        stroke-dasharray="2,2"
-        opacity="0.5"
-      />
-
-      <!-- Hit markers -->
-      <g v-for="marker in hitMarkers" :key="marker.id">
-        <!-- Outer glow -->
-        <circle
-          :cx="marker.x"
-          :cy="marker.y"
-          r="4"
-          :fill="primaryColor"
-          opacity="0.3"
+        <!-- ========== REALISTIC HUMAN SILHOUETTE ========== -->
+        
+        <!-- Head - oval shape -->
+        <ellipse
+          cx="50" cy="8" rx="6" ry="7"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.4"
+          filter="url(#softGlow)"
         />
-        <!-- Inner dot -->
-        <circle
-          :cx="marker.x"
-          :cy="marker.y"
-          r="2"
-          :fill="primaryColor"
-          filter="url(#glow)"
-        >
-          <animate
-            attributeName="opacity"
-            from="1"
-            to="0"
-            dur="2s"
-            begin="0s"
-            fill="freeze"
+        
+        <!-- Neck -->
+        <rect x="47" y="14" width="6" height="4" rx="1"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+        />
+        
+        <!-- Shoulders and torso -->
+        <path
+          d="M 38 18 
+             Q 35 20 34 25 
+             L 32 30
+             Q 30 35 32 45
+             L 35 55
+             Q 38 60 40 70
+             L 42 85
+             L 44 100
+             L 48 110
+             L 50 115
+             L 52 110
+             L 56 100
+             L 58 85
+             L 60 70
+             Q 62 60 65 55
+             L 68 45
+             Q 70 35 68 30
+             L 66 25
+             Q 65 20 62 18
+             Q 55 16 50 16
+             Q 45 16 38 18 Z"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.5"
+          filter="url(#softGlow)"
+        />
+        
+        <!-- Chest muscle definition -->
+        <path
+          d="M 38 22 
+             Q 40 28 42 35
+             Q 50 38 58 35
+             Q 60 28 62 22
+             Q 55 20 50 20
+             Q 45 20 38 22 Z"
+          fill="url(#muscleGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+          opacity="0.6"
+        />
+        
+        <!-- Stomach/abs area -->
+        <path
+          d="M 40 40
+             Q 42 50 44 58
+             Q 50 62 56 58
+             Q 58 50 60 40
+             Q 55 38 50 38
+             Q 45 38 40 40 Z"
+          fill="url(#muscleGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+          opacity="0.5"
+        />
+        
+        <!-- Left Arm -->
+        <path
+          d="M 34 25
+             Q 28 28 24 35
+             Q 20 42 22 50
+             Q 24 55 28 58
+             L 32 55
+             Q 30 48 30 40
+             Q 30 32 34 28
+             Z"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.4"
+          filter="url(#softGlow)"
+        />
+        
+        <!-- Right Arm -->
+        <path
+          d="M 66 25
+             Q 72 28 76 35
+             Q 80 42 78 50
+             Q 76 55 72 58
+             L 68 55
+             Q 70 48 70 40
+             Q 70 32 66 28
+             Z"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.4"
+          filter="url(#softGlow)"
+        />
+        
+        <!-- Left Leg -->
+        <path
+          d="M 42 70
+             Q 38 80 38 90
+             Q 38 100 40 108
+             Q 42 112 45 110
+             L 47 100
+             Q 48 90 48 80
+             L 48 70
+             Z"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.4"
+          filter="url(#softGlow)"
+        />
+        
+        <!-- Right Leg -->
+        <path
+          d="M 52 70
+             Q 52 80 52 90
+             Q 52 100 55 108
+             Q 58 112 60 110
+             L 60 100
+             Q 62 90 62 80
+             Q 62 70 58 70
+             Z"
+          fill="url(#skinGrad)"
+          :stroke="primaryColor"
+          stroke-width="0.4"
+          filter="url(#softGlow)"
+        />
+
+        <!-- ========== SENSOR ZONES (hit targets) ========== -->
+        
+        <!-- Head zone -->
+        <circle cx="50" cy="8" r="5" 
+          fill="none" 
+          :stroke="primaryColor" 
+          stroke-width="0.3" 
+          stroke-dasharray="2,2"
+          opacity="0.5"
+        />
+        
+        <!-- Chest zone -->
+        <ellipse cx="50" cy="28" rx="10" ry="8"
+          fill="none"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+          stroke-dasharray="2,2"
+          opacity="0.5"
+        />
+        
+        <!-- Stomach zone -->
+        <ellipse cx="50" cy="48" rx="8" ry="7"
+          fill="none"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+          stroke-dasharray="2,2"
+          opacity="0.5"
+        />
+        
+        <!-- Left leg zone -->
+        <ellipse cx="42" cy="90" rx="4" ry="12"
+          fill="none"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+          stroke-dasharray="2,2"
+          opacity="0.5"
+        />
+        
+        <!-- Right leg zone -->
+        <ellipse cx="58" cy="90" rx="4" ry="12"
+          fill="none"
+          :stroke="primaryColor"
+          stroke-width="0.3"
+          stroke-dasharray="2,2"
+          opacity="0.5"
+        />
+
+        <!-- ========== HIT MARKERS ========== -->
+        <g v-for="marker in hitMarkers" :key="marker.id">
+          <!-- Outer glow ring -->
+          <circle
+            :cx="marker.x"
+            :cy="marker.y"
+            r="4"
+            :fill="primaryColor"
+            opacity="0.2"
           />
-        </circle>
-      </g>
-    </svg>
+          <!-- Hit dot -->
+          <circle
+            :cx="marker.x"
+            :cy="marker.y"
+            r="2"
+            :fill="primaryColor"
+            filter="url(#glow)"
+          >
+            <animate
+              attributeName="opacity"
+              from="1"
+              to="0"
+              dur="2s"
+              begin="0s"
+              fill="freeze"
+            />
+          </circle>
+        </g>
+      </svg>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.target-container {
+.target-wrapper {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.target-container {
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 100 / 120;
   transition: background-color 0.1s ease;
 }
 
 .target-container.flash-active {
-  background-color: rgba(0, 255, 0, 0.15);
+  background-color: rgba(0, 255, 0, 0.1);
 }
 
 .target-svg {

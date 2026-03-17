@@ -1135,10 +1135,20 @@ class AdminConsumer(BaseConsumer):
         # Get config data
         config_data = {}
         if config:
+            # Convert sensor_points from JSON string to dict if needed
+            sensor_points = config.sensor_points
+            if isinstance(sensor_points, str):
+                import json
+                try:
+                    sensor_points = json.loads(sensor_points)
+                except:
+                    sensor_points = {'head': 100, 'chest': 50, 'stomach': 30, 'left_leg': 20, 'right_leg': 20}
+            
             config_data = {
                 'primary_color': config.primary_color or '#00ff00',
                 'win_score': config.win_score or 1000,
                 'use_win_score': config.use_win_score,
+                'sensor_points': sensor_points,
             }
         
         for i in range(countdown_seconds, 0, -1):
@@ -1316,29 +1326,28 @@ class AdminConsumer(BaseConsumer):
         
         winners = await check_and_end_game()
         
-        if winners:
-            # Get final scores
-            final_scores = await self.get_game_scores_by_id(game_id)
-            
-            # Broadcast game end
-            await self.channel_layer.group_send(f'game_{game_id}', {
-                'type': 'GAME_END',
-                'winner_lane': winners,
-                'final_scores': final_scores,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-            await self.channel_layer.group_send('all_games', {
-                'type': 'GAME_END',
-                'winner_lane': winners,
-                'final_scores': final_scores,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-            await self.channel_layer.group_send('game_broadcast', {
-                'type': 'GAME_END',
-                'winner_lane': winners,
-                'final_scores': final_scores,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
+        # Always broadcast GAME_END when timer expires, not just when there are winners
+        final_scores = await self.get_game_scores_by_id(game_id)
+        
+        # Broadcast game end to all groups
+        await self.channel_layer.group_send(f'game_{game_id}', {
+            'type': 'GAME_END',
+            'winner_lane': winners,
+            'final_scores': final_scores,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+        await self.channel_layer.group_send('all_games', {
+            'type': 'GAME_END',
+            'winner_lane': winners,
+            'final_scores': final_scores,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+        await self.channel_layer.group_send('game_broadcast', {
+            'type': 'GAME_END',
+            'winner_lane': winners,
+            'final_scores': final_scores,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
     
     @database_sync_to_async
     def end_game(self, game_id: str):
