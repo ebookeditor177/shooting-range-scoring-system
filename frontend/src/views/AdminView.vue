@@ -14,7 +14,6 @@ const gameConfig = ref({
   duration: 60,
   countdown: 3,
   winScore: 1000,
-  useWinScore: false,
   enabledLanes: [1, 2, 3, 4, 5]
 })
 
@@ -144,7 +143,6 @@ function startGame() {
     duration: gameConfig.value.duration,
     countdown: gameConfig.value.countdown,
     win_score: gameConfig.value.winScore,
-    use_win_score: gameConfig.value.useWinScore,
     lanes: lanes
   })
 }
@@ -267,10 +265,6 @@ function getLaneStatusClass(laneNumber: number) {
           <div class="control-group">
             <label>Win Score</label>
             <input type="number" v-model="gameConfig.winScore" min="100" max="10000" />
-          </div>
-          <div class="control-group checkbox">
-            <input type="checkbox" id="useWinScore" v-model="gameConfig.useWinScore" />
-            <label for="useWinScore">End on win score</label>
           </div>
         </div>
 

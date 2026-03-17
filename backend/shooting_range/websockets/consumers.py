@@ -472,92 +472,9 @@ class DeviceConsumer(BaseConsumer):
             await self.channel_layer.group_send("game_broadcast", hit_message)
             
             # Note: Score updates are now handled via HIT_EVENT broadcasts and GAME_END
-            # The broadcast_score_update call removed as it's redundant
-        
-        # Check if any lane reached win score - end game early if so
-        if result['game_id']:
-            await self._check_win_score(result['game_id'], lane.lane_number, result['total_score'])
+            # Game always ends by timer, not by reaching win score
         
         return result
-    
-    async def _check_win_score(self, game_id: str, lane_number: int, score: int):
-        """Check if a lane has reached the win score and end game early."""
-        from asgiref.sync import sync_to_async
-        
-        @sync_to_async
-        def check_and_end():
-            from shooting_range.games.models import Game, GameStatus
-            from shooting_range.lanes.models import Lane, LaneScore
-            
-            try:
-                game = Game.objects.select_related('configuration').get(game_id=game_id, status=GameStatus.ACTIVE)
-                
-                # Get win score from game config, not settings
-                config = game.configuration
-                win_score = config.win_score if config else 1000
-                use_win_score = game.use_win_score if config else True
-                
-                # Get all lane scores for this game - convert to list
-                lane_scores = list(LaneScore.objects.filter(game=game).select_related('lane'))
-                
-                # In individual mode, find ALL lanes that reached win score
-                winners = []
-                if use_win_score:
-                    if game.mode == 'individual':
-                        # Individual mode: all lanes that reached win_score are winners
-                        for ls in lane_scores:
-                            if ls.score >= win_score:
-                                winners.append(ls.lane.lane_number)
-                        
-                        # Mark game as ended if any winner
-                        if winners:
-                            game.status = GameStatus.ENDED
-                            game.ended_at = timezone.now()
-                            # Set first winner as primary
-                            primary_lane = Lane.objects.filter(lane_number=winners[0]).first()
-                            if primary_lane:
-                                game.winner_lane = primary_lane
-                            game.save()
-                            return winners
-                    else:
-                        # All-lanes mode: first to reach wins
-                        if score >= win_score:
-                            lane = Lane.objects.filter(lane_number=lane_number).first()
-                            if lane:
-                                game.winner_lane = lane
-                            game.status = GameStatus.ENDED
-                            game.ended_at = timezone.now()
-                            game.save()
-                            return [lane_number]
-                return []
-            except Game.DoesNotExist:
-                return []
-        
-        winners = await check_and_end()
-        
-        if winners:
-            # Get final scores
-            final_scores = await self.get_game_scores_by_id(game_id)
-            
-            # Broadcast game end
-            await self.channel_layer.group_send(f'game_{game_id}', {
-                'type': 'GAME_END',
-                'winner_lane': winners,  # Now can be a list
-                'final_scores': final_scores,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-            await self.channel_layer.group_send('all_games', {
-                'type': 'GAME_END',
-                'winner_lane': winners,
-                'final_scores': final_scores,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-            await self.channel_layer.group_send('game_broadcast', {
-                'type': 'GAME_END',
-                'winner_lane': winners,
-                'final_scores': final_scores,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
     
     async def get_game_scores(self, game):
         from asgiref.sync import sync_to_async
@@ -1166,13 +1083,13 @@ class AdminConsumer(BaseConsumer):
             try:
                 game = Game.objects.select_related('configuration').get(game_id=game_id)
                 config = game.configuration
-                return game.duration, config
+                return game.duration, config, game.win_score
             except Game.DoesNotExist:
-                return 60, None
+                return 60, None, 1000
         
-        game_duration, config = await get_game_info()
+        game_duration, config, game_win_score = await get_game_info()
         
-        # Get config data
+        # Get config data - use game's win_score, not config's
         config_data = {}
         if config:
             # Convert sensor_points from JSON string to dict if needed
@@ -1186,10 +1103,13 @@ class AdminConsumer(BaseConsumer):
             
             config_data = {
                 'primary_color': config.primary_color or '#00ff00',
-                'win_score': config.win_score or 1000,
-                'use_win_score': config.use_win_score,
+                'win_score': game_win_score or 1000,
                 'sensor_points': sensor_points,
             }
+        
+        # Ensure win_score is always set
+        if not config_data.get('win_score'):
+            config_data['win_score'] = game_win_score or 1000
         
         for i in range(countdown_seconds, 0, -1):
             # Send to game-specific group
@@ -1321,38 +1241,32 @@ class AdminConsumer(BaseConsumer):
             try:
                 game = Game.objects.select_related('configuration').get(game_id=game_id, status=GameStatus.ACTIVE)
                 
-                # Get win score from game config, not settings
-                config = game.configuration
-                win_score = config.win_score if config else 1000
-                use_win_score = game.use_win_score if config else True
+                # Get win score from game (not config) - admin sets win_score per game
+                win_score = game.win_score if game.win_score else 1000
                 
                 # Convert to list to avoid queryset truthiness issues
                 lane_scores = list(LaneScore.objects.filter(game=game).select_related('lane'))
                 
-                # Get all winners (lanes with score >= win_score)
+                # Determine winners based on mode
                 winners = []
                 
-                if use_win_score:
-                    # In individual mode, anyone above win_score wins
-                    if game.mode == 'individual':
-                        for ls in lane_scores:
-                            if ls.score >= win_score:
-                                winners.append(ls.lane.lane_number)
-                    else:
-                        # In all-lanes mode, highest score wins
-                        if lane_scores:
-                            highest = max(lane_scores, key=lambda ls: ls.score)
-                            winners = [highest.lane.lane_number]
-                
-                # If no one reached win_score in individual mode, highest score still wins
-                if not winners and lane_scores:
-                    highest = max(lane_scores, key=lambda ls: ls.score)
-                    winners = [highest.lane.lane_number]
+                if game.mode == 'individual':
+                    # Individual mode: all lanes with score >= win_score are winners
+                    for ls in lane_scores:
+                        if ls.score >= win_score:
+                            winners.append(ls.lane.lane_number)
+                    
+                    # If no one reached win_score, no winners (game ends without winners)
+                else:
+                    # All-lanes (competition) mode: highest score wins
+                    if lane_scores:
+                        highest = max(lane_scores, key=lambda ls: ls.score)
+                        winners = [highest.lane.lane_number]
                 
                 game.status = GameStatus.ENDED
                 game.ended_at = timezone.now()
                 
-                # Set winner lane
+                # Set winner lane (first winner if multiple)
                 if winners:
                     lane = Lane.objects.filter(lane_number=winners[0]).first()
                     if lane:

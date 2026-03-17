@@ -57,6 +57,8 @@ function handleMessage(msg: WebSocketMessage) {
     case 'GAME_START':
     case 'GAME_STARTED':
       // Handle both GAME_START and GAME_STARTED messages
+      // Reset scores for new game
+      store.resetGame()
       if (msg.countdown) store.setCountdown(msg.countdown)
       store.startGame(msg.game_id, msg.duration || 60)
       store.setCountdown(0)
@@ -66,8 +68,7 @@ function handleMessage(msg: WebSocketMessage) {
       if (msg.config) {
         store.setConfig({
           primaryColor: msg.config.primary_color || '#00ff00',
-          winScore: msg.config.win_score || 1000,
-          useWinScore: msg.config.use_win_score !== false
+          winScore: msg.config.win_score || 1000
         })
       }
       break
@@ -220,7 +221,7 @@ watch(() => store.recentHits.length, (newLen, oldLen) => {
           <div class="score-main">
             <span class="score-label">SCORE</span>
             <span class="score-value">{{ store.currentScore(laneNumber) }}</span>
-            <div class="score-target" v-if="store.config.useWinScore">
+            <div class="score-target">
               Target: {{ store.config.winScore || 1000 }}
             </div>
           </div>
