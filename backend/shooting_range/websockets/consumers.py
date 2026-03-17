@@ -1304,7 +1304,7 @@ class AdminConsumer(BaseConsumer):
         
         # Check if game is still active
         from shooting_range.games.models import Game, GameStatus
-        from shooting_range.lanes.models import LaneScore
+        from shooting_range.lanes.models import LaneScore, Lane
         from asgiref.sync import sync_to_async
         
         @sync_to_async
