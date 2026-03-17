@@ -19,7 +19,7 @@ export interface GameState {
   mode: 'individual' | 'all_lanes'
   duration: number
   remaining_time: number
-  winner_lane: number | null
+  winner_lane: number | number[] | null
 }
 
 export interface Score {
@@ -59,7 +59,6 @@ export const useGameStore = defineStore('game', () => {
     enableSound: true,
     enableVisualEffects: true,
     winScore: 1000,
-    useWinScore: true,
     sensorPoints: {
       head: 100,
       chest: 50,
